@@ -1,4 +1,9 @@
-[---
+---
+description: 
+alwaysApply: true
+---
+
+---
 tool: cursor
 role: compatibility-adapter
 canonical_source: /AGENT.MD
@@ -22,4 +27,3 @@ structured_context: /aiDoc
 - 不要在这里扩写项目级规则
 - 项目级规则变更时，先更新 `/AGENT.MD` 与 `/aiDoc/`
 - 工具目录只保留薄适配层职责，不再保存独立 project rule 副本
-]()
