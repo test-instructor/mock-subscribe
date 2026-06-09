@@ -24,6 +24,10 @@ func Api(ctx context.Context) {
 		{Path: "/mockSubscribeDeduct/getDeductRecordList", Description: "获取扣款记录列表", ApiGroup: "微信订阅Mock-扣款", Method: "GET"},
 		{Path: "/mockSubscribeDeduct/findDeductRecord", Description: "获取扣款记录详情", ApiGroup: "微信订阅Mock-扣款", Method: "GET"},
 
+		{Path: "/mockSubscribeCallback/receiveContract", Description: "接收签约回调", ApiGroup: "微信订阅Mock-回调", Method: "POST"},
+		{Path: "/mockSubscribeCallback/getCallbackRecordList", Description: "获取回调记录列表", ApiGroup: "微信订阅Mock-回调", Method: "GET"},
+		{Path: "/mockSubscribeCallback/findCallbackRecord", Description: "获取回调记录详情", ApiGroup: "微信订阅Mock-回调", Method: "GET"},
+
 		{Path: "/mockSubscribeWechat/contractSign", Description: "APP纯签约", ApiGroup: "微信订阅Mock-微信接口", Method: "POST"},
 		{Path: "/mockSubscribeWechat/queryContract", Description: "查询签约关系", ApiGroup: "微信订阅Mock-微信接口", Method: "POST"},
 		{Path: "/mockSubscribeWechat/terminateContract", Description: "申请解约", ApiGroup: "微信订阅Mock-微信接口", Method: "POST"},

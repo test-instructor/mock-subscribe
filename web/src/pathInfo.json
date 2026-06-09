@@ -92,6 +92,7 @@
   "/src/plugin/auto/view/pubPlug/pubPlug.vue": "PubPlug",
   "/src/plugin/auto/view/skills/index.vue": "Index",
   "/src/plugin/email/view/index.vue": "Email",
+  "/src/plugin/mock_subscribe/view/callback.vue": "MockSubscribeCallback",
   "/src/plugin/mock_subscribe/view/contract.vue": "MockSubscribeContract",
   "/src/plugin/mock_subscribe/view/deduct.vue": "MockSubscribeDeduct",
   "/src/plugin/mock_subscribe/view/merchant.vue": "MockSubscribeMerchant"

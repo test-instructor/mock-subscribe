@@ -156,6 +156,23 @@ type TerminateContractResponse struct {
 
 // ====================== 通用ACK ======================
 
+// ContractCallbackRequest 签约回调请求(XML)
+type ContractCallbackRequest struct {
+	AppID              string `xml:"appid"`
+	MchID              string `xml:"mch_id"`
+	ContractID         string `xml:"contract_id"`
+	OutContractCode    string `xml:"out_contract_code"`
+	ContractStatus     string `xml:"contract_status"`
+	ContractEndingType string `xml:"contract_ending_type"`
+	ContractExtID      string `xml:"contract_ext_id"`
+	PlanID             string `xml:"plan_id"`
+	OpenID             string `xml:"openid"`
+	SignType           string `xml:"sign_type"`
+	TimeStamp          string `xml:"timestamp"`
+	Nonce              string `xml:"nonce"`
+	Sign               string `xml:"sign"`
+}
+
 // GenericACK 通用成功/失败ACK
 type GenericACK struct {
 	ReturnCode string `xml:"return_code"`

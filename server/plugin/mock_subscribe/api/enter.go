@@ -12,4 +12,5 @@ type api struct {
 	Contract contract
 	Deduct   deduct
 	Wechat   wechat
+	Callback callback
 }

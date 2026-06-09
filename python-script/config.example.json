@@ -1,0 +1,17 @@
+{
+  "base_url": "http://127.0.0.1:18888",
+  "sign_path": "/mockSubscribeWechat/contractSign",
+  "query_path": "/mockSubscribeWechat/queryContract",
+  "callback_list_path": "/mockSubscribeCallback/getCallbackRecordList",
+  "app_id": "ApplicationID",
+  "mch_id": "MerchantID",
+  "plan_id": "AppID",
+  "sign_type": "MD5",
+  "sign_key": "O2TBTYjOXBKFfpj",
+  "notify_url": "http://127.0.0.1:18888/mockSubscribeCallback/receiveContract",
+  "contract_display_account": "KK星球",
+  "out_contract_code_prefix": "OUT-CONTRACT",
+  "openid_prefix": "openid_mock",
+  "poll_interval_seconds": 2,
+  "poll_timeout_seconds": 60
+}

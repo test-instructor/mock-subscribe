@@ -16,4 +16,5 @@ func Router(engine *gin.Engine) {
 	router.Router.Contract.Init(public, private)
 	router.Router.Deduct.Init(public, private)
 	router.Router.Wechat.Init(public, private)
+	router.Router.Callback.Init(public, private)
 }

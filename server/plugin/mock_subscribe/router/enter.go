@@ -12,4 +12,5 @@ type router struct {
 	Contract contract
 	Deduct   deduct
 	Wechat   wechat
+	Callback callback
 }

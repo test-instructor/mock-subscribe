@@ -16,6 +16,7 @@ func Gorm(ctx context.Context) {
 		new(model.Contract),
 		new(model.ContractRecord),
 		new(model.DeductRecord),
+		new(model.CallbackRecord),
 	)
 	if err != nil {
 		err = errors.Wrap(err, "注册微信订阅mock表失败")
