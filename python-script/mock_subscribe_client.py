@@ -41,6 +41,17 @@ def random_nonce(length: int = 24) -> str:
     return ''.join(random.choice(alphabet) for _ in range(length))
 
 
+def random_nonce_str(length: int = 32) -> str:
+    return random_nonce(length)
+
+
+def pick_first_non_empty(*values):
+    for value in values:
+        if str(value).strip() != '':
+            return value
+    return ''
+
+
 def build_sign(params: dict, sign_key: str) -> str:
     keys = sorted(k for k, v in params.items() if k != 'sign' and str(v).strip() != '')
     raw = '&'.join(f'{key}={params[key]}' for key in keys)
@@ -138,9 +149,16 @@ def make_deduct_apply_request(config: dict, contract_id: str, out_trade_no: str,
         'out_trade_no': out_trade_no,
         'contract_id': contract_id,
         'transaction_id': transaction_id,
+        'body': config.get('deduct_body', config.get('body', '委托代扣')),
+        'detail': config.get('deduct_detail', ''),
+        'attach': config.get('deduct_attach', ''),
+        'total_fee': total_amount,
         'total_amount': total_amount,
         'fee_type': config.get('fee_type', 'CNY'),
-        'notify_url': config['notify_url'],
+        'notify_url': config.get('deduct_notify_url', config['notify_url']),
+        'trade_type': config.get('trade_type', 'PAP'),
+        'device_info': config.get('device_info', ''),
+        'nonce_str': random_nonce_str(),
         'sign_type': config['sign_type'],
         'timestamp': str(int(time.time())),
         'nonce': random_nonce(),
@@ -155,6 +173,7 @@ def make_order_query_request(config: dict, out_trade_no: str, transaction_id: st
         'mch_id': config['mch_id'],
         'out_trade_no': out_trade_no,
         'transaction_id': transaction_id,
+        'nonce_str': random_nonce_str(),
         'sign_type': config['sign_type'],
         'timestamp': str(int(time.time())),
         'nonce': random_nonce(),
@@ -219,6 +238,54 @@ def wait_callback_flow(config: dict, out_contract_code: str) -> dict:
         time.sleep(interval)
     log_status('FAILED', '等待回调超时', out_contract_code=out_contract_code, timeout_seconds=timeout_seconds)
     raise TimeoutError(f'callback not received in {timeout_seconds} seconds')
+
+
+def query_contract_until_active_flow(config: dict, contract_id: str, out_contract_code: str) -> dict:
+    timeout_seconds = int(config.get('poll_timeout_seconds', 60))
+    deadline = time.time() + timeout_seconds
+    interval = int(config.get('poll_interval_seconds', 2))
+    latest = None
+    attempt = 0
+    current_contract_id = contract_id
+    log_status(
+        'START',
+        '开始主动查询签约关系',
+        contract_id=contract_id,
+        out_contract_code=out_contract_code,
+        timeout_seconds=timeout_seconds,
+        interval_seconds=interval,
+    )
+    while time.time() < deadline:
+        attempt += 1
+        log_status('WAITING', '轮询签约关系中', contract_id=current_contract_id, out_contract_code=out_contract_code, attempt=attempt)
+        latest = query_flow(config, current_contract_id, out_contract_code)
+        response = latest['response']
+        current_contract_id = latest.get('contract_id') or current_contract_id
+        if is_xml_api_success(response):
+            contract_status = latest.get('contract_status', '')
+            if contract_status == ACTIVE_CONTRACT_STATUS:
+                log_status(
+                    'SUCCESS',
+                    '签约关系已生效',
+                    contract_id=current_contract_id,
+                    out_contract_code=out_contract_code,
+                    attempt=attempt,
+                    contract_status=contract_status,
+                )
+                return latest
+        remaining_seconds = max(0, int(deadline - time.time()))
+        log_status(
+            'WAITING',
+            '签约关系未就绪，继续查询',
+            contract_id=current_contract_id,
+            out_contract_code=out_contract_code,
+            attempt=attempt,
+            contract_status=(latest or {}).get('contract_status', ''),
+            remaining_seconds=remaining_seconds,
+        )
+        time.sleep(interval)
+    log_status('FAILED', '主动查询签约关系超时', contract_id=current_contract_id, out_contract_code=out_contract_code, timeout_seconds=timeout_seconds)
+    raise TimeoutError(f'contract not active in {timeout_seconds} seconds')
 
 
 def query_flow(config: dict, contract_id: str, out_contract_code: str) -> dict:
@@ -318,7 +385,7 @@ def query_order_flow(config: dict, out_trade_no: str, transaction_id: str = '') 
 
 def deduct_after_query_flow(config: dict, contract_id: str, out_contract_code: str, total_amount: int, out_trade_no: str | None = None) -> dict:
     log_status('START', '开始执行查约后扣款流程', contract_id=contract_id, out_contract_code=out_contract_code, total_amount=total_amount)
-    query_result = query_flow(config, contract_id, out_contract_code)
+    query_result = query_contract_until_active_flow(config, contract_id, out_contract_code)
     query_response = query_result['response']
     if not is_xml_api_success(query_response):
         log_status('FAILED', '签约查询失败，终止扣款流程', contract_id=contract_id, out_contract_code=out_contract_code)
@@ -337,11 +404,11 @@ def deduct_after_query_flow(config: dict, contract_id: str, out_contract_code: s
             'order': None,
         }
 
-    log_status('SUCCESS', '签约状态为已签约，开始申请扣款', contract_id=contract_id, out_contract_code=out_contract_code, contract_status=contract_status)
+    log_status('SUCCESS', '签约状态为已签约，开始申请扣款', contract_id=query_result['contract_id'], out_contract_code=out_contract_code, contract_status=contract_status)
     deduct_result = apply_deduct_flow(config, query_result['contract_id'], total_amount, out_trade_no=out_trade_no)
     deduct_response = deduct_result['response']
     if not is_xml_api_success(deduct_response):
-        log_status('FAILED', '扣款请求失败，不再查询订单', contract_id=contract_id, out_trade_no=deduct_result['out_trade_no'])
+        log_status('FAILED', '扣款请求失败，不再查询订单', contract_id=query_result['contract_id'], out_trade_no=deduct_result['out_trade_no'])
         return {
             'query': query_result,
             'deduct': deduct_result,
@@ -360,12 +427,10 @@ def e2e_flow(config: dict, total_amount: int | None = None) -> dict:
     amount = total_amount if total_amount is not None else int(config.get('total_amount', 100))
     log_status('START', '开始执行完整流程', total_amount=amount)
     sign_result = sign_flow(config)
-    callback_result = wait_callback_flow(config, sign_result['out_contract_code'])
     flow_result = deduct_after_query_flow(config, sign_result['contract_id'], sign_result['out_contract_code'], amount)
-    log_status('SUCCESS', '完整流程执行完成', out_contract_code=sign_result['out_contract_code'], contract_id=sign_result['contract_id'])
+    log_status('SUCCESS', '完整流程执行完成', out_contract_code=sign_result['out_contract_code'], contract_id=flow_result['query']['contract_id'])
     return {
         'sign': sign_result,
-        'callback': callback_result,
         'query': flow_result['query'],
         'deduct': flow_result['deduct'],
         'order': flow_result['order'],
@@ -388,7 +453,7 @@ def main() -> int:
     query_cmd.add_argument('--contract-id', required=True)
     query_cmd.add_argument('--out-contract-code', required=True)
 
-    deduct_cmd = sub.add_parser('deduct', help='apply deduct after contract active check')
+    deduct_cmd = sub.add_parser('deduct', help='query contract until active, then apply deduct and query order')
     deduct_cmd.add_argument('--contract-id', required=True)
     deduct_cmd.add_argument('--out-contract-code', required=True)
     deduct_cmd.add_argument('--total-amount', type=int, required=True)
@@ -398,7 +463,7 @@ def main() -> int:
     order_cmd.add_argument('--out-trade-no', required=True)
     order_cmd.add_argument('--transaction-id', default='')
 
-    e2e_cmd = sub.add_parser('e2e', help='run sign -> wait-callback -> query -> deduct -> query-order')
+    e2e_cmd = sub.add_parser('e2e', help='run sign -> query-contract-until-active -> deduct -> query-order')
     e2e_cmd.add_argument('--total-amount', type=int, default=0)
 
     args = parser.parse_args()

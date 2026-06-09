@@ -57,26 +57,23 @@ func (s *callbackRecord) GetList(info mockReq.CallbackRecordSearch) ([]model.Cal
 
 func (s *callbackRecord) BuildContractSignParams(req model.ContractCallbackRequest) map[string]string {
 	return map[string]string{
-		"appid":                req.AppID,
-		"mch_id":               req.MchID,
-		"contract_id":          req.ContractID,
-		"out_contract_code":    req.OutContractCode,
-		"contract_status":      req.ContractStatus,
-		"contract_ending_type": req.ContractEndingType,
-		"contract_ext_id":      req.ContractExtID,
-		"plan_id":              req.PlanID,
-		"openid":               req.OpenID,
-		"sign_type":            req.SignType,
-		"timestamp":            req.TimeStamp,
-		"nonce":                req.Nonce,
-		"sign":                 req.Sign,
+		"return_code":   req.ReturnCode,
+		"result_code":   req.ResultCode,
+		"mch_id":        req.MchID,
+		"contract_code": req.ContractCode,
+		"openid":        req.OpenID,
+		"plan_id":       req.PlanID,
+		"change_type":   req.ChangeType,
+		"operate_time":  req.OperateTime,
+		"contract_id":   req.ContractID,
+		"sign":          req.Sign,
 	}
 }
 
 func (s *callbackRecord) LocateMerchantAndContract(req model.ContractCallbackRequest) (model.Merchant, model.Contract, error) {
 	contract, err := Service.Contract.GetContractByContractID(req.ContractID)
-	if err != nil && strings.TrimSpace(req.OutContractCode) != "" {
-		contract, err = Service.Contract.GetContractByOutID(req.OutContractCode)
+	if err != nil && strings.TrimSpace(req.ContractCode) != "" {
+		contract, err = Service.Contract.GetContractByOutID(req.ContractCode)
 	}
 	if err != nil {
 		return model.Merchant{}, model.Contract{}, err
@@ -97,8 +94,8 @@ func (s *callbackRecord) ValidateContractCallback(req model.ContractCallbackRequ
 	if strings.TrimSpace(req.MchID) == "" {
 		return errors.New("mch_id不能为空")
 	}
-	if strings.TrimSpace(req.ContractID) == "" && strings.TrimSpace(req.OutContractCode) == "" {
-		return errors.New("contract_id和out_contract_code不能同时为空")
+	if strings.TrimSpace(req.ContractID) == "" && strings.TrimSpace(req.ContractCode) == "" {
+		return errors.New("contract_id和contract_code不能同时为空")
 	}
 	if strings.TrimSpace(req.Sign) == "" {
 		return errors.New("sign不能为空")
