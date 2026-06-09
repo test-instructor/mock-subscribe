@@ -95,5 +95,6 @@
   "/src/plugin/mock_subscribe/view/callback.vue": "MockSubscribeCallback",
   "/src/plugin/mock_subscribe/view/contract.vue": "MockSubscribeContract",
   "/src/plugin/mock_subscribe/view/deduct.vue": "MockSubscribeDeduct",
+  "/src/plugin/mock_subscribe/view/deductCallback.vue": "MockSubscribeDeductCallback",
   "/src/plugin/mock_subscribe/view/merchant.vue": "MockSubscribeMerchant"
 }

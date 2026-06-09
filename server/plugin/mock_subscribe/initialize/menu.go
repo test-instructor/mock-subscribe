@@ -55,6 +55,15 @@ func Menu(ctx context.Context) {
 			Sort:      4,
 			Meta:      model.Meta{Title: "回调记录", Icon: "notification", KeepAlive: true},
 		},
+		{
+			ParentId:  0,
+			Path:      "mockSubscribeDeductCallback",
+			Name:      "MockSubscribeDeductCallback",
+			Hidden:    false,
+			Component: "plugin/mock_subscribe/view/deductCallback.vue",
+			Sort:      5,
+			Meta:      model.Meta{Title: "代扣回调记录", Icon: "message-box", KeepAlive: true},
+		},
 	}
 	utils.RegisterMenus(entities...)
 }

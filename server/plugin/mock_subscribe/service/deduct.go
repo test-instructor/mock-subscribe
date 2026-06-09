@@ -2,6 +2,7 @@ package service
 
 import (
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/flipped-aurora/gin-vue-admin/server/global"
@@ -259,6 +260,20 @@ func (s *deduct) GetDeductRecordByTransactionID(transactionID string) (model.Ded
 
 func (s *deduct) SetDeductRecordTransactionID(id uint, transactionID string) error {
 	return global.GVA_DB.Model(&model.DeductRecord{}).Where("id = ?", id).Update("transaction_id", transactionID).Error
+}
+
+func (s *deduct) UpdateDeductRecordByCallback(id uint, status string, transactionID string, callbackResult string, callbackTime int64, errCode string, errMsg string) error {
+	updates := map[string]any{
+		"status":          status,
+		"callback_result": callbackResult,
+		"callback_time":   callbackTime,
+		"error_code":      errCode,
+		"error_message":   errMsg,
+	}
+	if strings.TrimSpace(transactionID) != "" {
+		updates["transaction_id"] = transactionID
+	}
+	return global.GVA_DB.Model(&model.DeductRecord{}).Where("id = ?", id).Updates(updates).Error
 }
 
 func (s *deduct) ClearContractPreNotify(contractID uint) error {

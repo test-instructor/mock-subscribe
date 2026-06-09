@@ -22,7 +22,7 @@ func TestBuildContractSignParamsMatchesGeneratedCallback(t *testing.T) {
 		t.Fatalf("unmarshal callback xml: %v", err)
 	}
 
-	if err := Service.CallbackRecord.VerifyContractCallback(req, key); err != nil {
+	if err := Service.CallbackRecord.VerifyContractCallback(req, true, key); err != nil {
 		t.Fatalf("verify callback sign: %v", err)
 	}
 }
@@ -44,7 +44,7 @@ func TestBuildContractSignParamsRejectsTamperedCallback(t *testing.T) {
 	}
 
 	req.ChangeType = "DELETE"
-	if err := Service.CallbackRecord.VerifyContractCallback(req, key); err == nil {
+	if err := Service.CallbackRecord.VerifyContractCallback(req, true, key); err == nil {
 		t.Fatal("expected verify callback sign to fail after tampering")
 	}
 }

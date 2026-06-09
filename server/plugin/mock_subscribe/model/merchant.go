@@ -15,6 +15,7 @@ type Merchant struct {
 	ContractAppID    string `json:"contractAppId" form:"contractAppId" gorm:"column:contract_app_id;comment:签约AppID"`
 	DisplayName      string `json:"displayName" form:"displayName" gorm:"column:display_name;comment:用户账户展示名称"`
 	SignKey          string `json:"signKey" form:"signKey" gorm:"column:sign_key;comment:签名key"`
+	VerifySign       bool   `json:"verifySign" form:"verifySign" gorm:"column:verify_sign;default:true;comment:是否验签"`
 	ContractTemplate string `json:"contractTemplate" form:"contractTemplate" gorm:"column:contract_template;comment:签约模板"`
 
 	// 签约回调配置

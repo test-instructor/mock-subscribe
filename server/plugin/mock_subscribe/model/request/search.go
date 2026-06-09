@@ -38,6 +38,18 @@ type DeductRecordSearch struct {
 	IsFirstDeduct  *bool      `json:"isFirstDeduct" form:"isFirstDeduct"`
 }
 
+// DeductCallbackRecordSearch 代扣回调记录搜索
+type DeductCallbackRecordSearch struct {
+	request.PageInfo
+	StartCreatedAt *time.Time `json:"startCreatedAt" form:"startCreatedAt"`
+	EndCreatedAt   *time.Time `json:"endCreatedAt" form:"endCreatedAt"`
+	MchID          string     `json:"mchId" form:"mchId"`
+	OutTradeNo     string     `json:"outTradeNo" form:"outTradeNo"`
+	TransactionID  string     `json:"transactionId" form:"transactionId"`
+	TradeState     string     `json:"tradeState" form:"tradeState"`
+	SignValid      *bool      `json:"signValid" form:"signValid"`
+}
+
 // ContractRecordSearch 签约记录搜索
 type ContractRecordSearch struct {
 	request.PageInfo

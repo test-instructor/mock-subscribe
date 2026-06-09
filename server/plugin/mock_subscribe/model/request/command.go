@@ -16,6 +16,7 @@ type MerchantInfo struct {
 	ContractAppID    string `json:"contractAppId" gorm:"column:contract_app_id"`
 	DisplayName      string `json:"displayName" gorm:"column:display_name"`
 	SignKey          string `json:"signKey" gorm:"column:sign_key"`
+	VerifySign       bool   `json:"verifySign" gorm:"column:verify_sign"`
 	ContractTemplate string `json:"contractTemplate" gorm:"column:contract_template"`
 
 	SignCallbackEnabled bool `json:"signCallbackEnabled" gorm:"column:sign_callback_enabled"`

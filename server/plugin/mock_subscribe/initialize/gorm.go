@@ -17,6 +17,7 @@ func Gorm(ctx context.Context) {
 		new(model.ContractStatusRecord),
 		new(model.ContractRecord),
 		new(model.DeductRecord),
+		new(model.DeductCallbackRecord),
 		new(model.CallbackRecord),
 	)
 	if err != nil {

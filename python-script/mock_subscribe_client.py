@@ -18,6 +18,25 @@ SUCCESS_RESULT_CODE = 'SUCCESS'
 ACTIVE_CONTRACT_STATUS = 'ACTIVE'
 SUCCESS_TRADE_STATE = 'SUCCESS'
 FAILED_TRADE_STATE = 'FAILED'
+ORDER_ACCEPTED_STATE = 'ACCEPT'
+ORDER_USERPAYING_STATE = 'USERPAYING'
+ORDER_NOTPAY_STATE = 'NOTPAY'
+ORDER_PAYERROR_STATE = 'PAYERROR'
+ORDER_CLOSED_STATE = 'CLOSED'
+ORDER_REFUND_STATE = 'REFUND'
+ORDER_TERMINAL_STATES = {
+    SUCCESS_TRADE_STATE,
+    FAILED_TRADE_STATE,
+    ORDER_PAYERROR_STATE,
+    ORDER_CLOSED_STATE,
+    ORDER_REFUND_STATE,
+}
+ORDER_PENDING_STATES = {
+    '',
+    ORDER_ACCEPTED_STATE,
+    ORDER_USERPAYING_STATE,
+    ORDER_NOTPAY_STATE,
+}
 
 
 def log_status(status: str, message: str, **fields) -> None:
@@ -378,9 +397,114 @@ def query_order_flow(config: dict, out_trade_no: str, transaction_id: str = '') 
         result_code=resp_data.get('result_code', ''),
         response_sign_valid=sign_valid,
     )
-    if trade_state in {SUCCESS_TRADE_STATE, FAILED_TRADE_STATE}:
-        log_status('SUCCESS' if trade_state == SUCCESS_TRADE_STATE else 'FAILED', '订单状态已落定', out_trade_no=result['out_trade_no'], transaction_id=result['transaction_id'], trade_state=trade_state)
+    if trade_state in ORDER_TERMINAL_STATES:
+        log_status(
+            'SUCCESS' if trade_state == SUCCESS_TRADE_STATE else 'FAILED',
+            '订单状态已落定',
+            out_trade_no=result['out_trade_no'],
+            transaction_id=result['transaction_id'],
+            trade_state=trade_state,
+        )
     return result
+
+
+def query_order_until_terminal_flow(config: dict, out_trade_no: str, transaction_id: str = '') -> dict:
+    timeout_seconds = int(config.get('poll_timeout_seconds', 60))
+    deadline = time.time() + timeout_seconds
+    interval = int(config.get('poll_interval_seconds', 2))
+    latest = None
+    attempt = 0
+    current_transaction_id = transaction_id
+    log_status(
+        'START',
+        '开始轮询查询订单',
+        out_trade_no=out_trade_no,
+        transaction_id=transaction_id,
+        timeout_seconds=timeout_seconds,
+        interval_seconds=interval,
+    )
+    while time.time() < deadline:
+        attempt += 1
+        log_status(
+            'WAITING',
+            '轮询订单状态中',
+            out_trade_no=out_trade_no,
+            transaction_id=current_transaction_id,
+            attempt=attempt,
+        )
+        latest = query_order_flow(config, out_trade_no, current_transaction_id)
+        response = latest['response']
+        trade_state = latest.get('trade_state', '')
+        current_transaction_id = latest.get('transaction_id') or current_transaction_id
+        if is_xml_api_success(response) and trade_state in ORDER_TERMINAL_STATES:
+            log_status(
+                'SUCCESS' if trade_state == SUCCESS_TRADE_STATE else 'FAILED',
+                '订单轮询结束',
+                out_trade_no=latest['out_trade_no'],
+                transaction_id=current_transaction_id,
+                trade_state=trade_state,
+                attempt=attempt,
+            )
+            return latest
+        if not is_xml_api_success(response) and response.get('err_code') == 'ORDERNOTEXIST':
+            remaining_seconds = max(0, int(deadline - time.time()))
+            log_status(
+                'WAITING',
+                '订单暂不存在，继续查询',
+                out_trade_no=out_trade_no,
+                transaction_id=current_transaction_id,
+                attempt=attempt,
+                remaining_seconds=remaining_seconds,
+                err_code=response.get('err_code', ''),
+                err_code_des=response.get('err_code_des', ''),
+            )
+            time.sleep(interval)
+            continue
+        if trade_state in ORDER_PENDING_STATES:
+            remaining_seconds = max(0, int(deadline - time.time()))
+            log_status(
+                'WAITING',
+                '订单未到终态，继续查询',
+                out_trade_no=latest['out_trade_no'],
+                transaction_id=current_transaction_id,
+                trade_state=trade_state,
+                attempt=attempt,
+                remaining_seconds=remaining_seconds,
+            )
+            time.sleep(interval)
+            continue
+        if not is_xml_api_success(response):
+            log_status(
+                'FAILED',
+                '订单查询失败，结束轮询',
+                out_trade_no=latest['out_trade_no'],
+                transaction_id=current_transaction_id,
+                attempt=attempt,
+                err_code=response.get('err_code', ''),
+                err_code_des=response.get('err_code_des', ''),
+                return_code=response.get('return_code', ''),
+                result_code=response.get('result_code', ''),
+            )
+            return latest
+        remaining_seconds = max(0, int(deadline - time.time()))
+        log_status(
+            'WAITING',
+            '订单状态未识别为终态，继续查询',
+            out_trade_no=latest['out_trade_no'],
+            transaction_id=current_transaction_id,
+            trade_state=trade_state,
+            attempt=attempt,
+            remaining_seconds=remaining_seconds,
+        )
+        time.sleep(interval)
+    log_status(
+        'FAILED',
+        '订单查询超时',
+        out_trade_no=out_trade_no,
+        transaction_id=current_transaction_id,
+        timeout_seconds=timeout_seconds,
+    )
+    raise TimeoutError(f'order not settled in {timeout_seconds} seconds')
 
 
 def deduct_after_query_flow(config: dict, contract_id: str, out_contract_code: str, total_amount: int, out_trade_no: str | None = None) -> dict:
@@ -415,7 +539,7 @@ def deduct_after_query_flow(config: dict, contract_id: str, out_contract_code: s
             'order': None,
         }
 
-    order_result = query_order_flow(config, deduct_result['out_trade_no'], deduct_result['transaction_id'])
+    order_result = query_order_until_terminal_flow(config, deduct_result['out_trade_no'], deduct_result['transaction_id'])
     return {
         'query': query_result,
         'deduct': deduct_result,
@@ -462,6 +586,7 @@ def main() -> int:
     order_cmd = sub.add_parser('query-order', help='query deduct order')
     order_cmd.add_argument('--out-trade-no', required=True)
     order_cmd.add_argument('--transaction-id', default='')
+    order_cmd.add_argument('--wait-until-terminal', action='store_true', help='poll order status until terminal state')
 
     e2e_cmd = sub.add_parser('e2e', help='run sign -> query-contract-until-active -> deduct -> query-order')
     e2e_cmd.add_argument('--total-amount', type=int, default=0)
@@ -480,7 +605,10 @@ def main() -> int:
     elif command == 'deduct':
         result = deduct_after_query_flow(config, args.contract_id, args.out_contract_code, args.total_amount, args.out_trade_no or None)
     elif command == 'query-order':
-        result = query_order_flow(config, args.out_trade_no, args.transaction_id)
+        if args.wait_until_terminal:
+            result = query_order_until_terminal_flow(config, args.out_trade_no, args.transaction_id)
+        else:
+            result = query_order_flow(config, args.out_trade_no, args.transaction_id)
     else:
         total_amount = getattr(args, 'total_amount', 0) or None
         result = e2e_flow(config, total_amount)

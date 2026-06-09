@@ -67,6 +67,13 @@
         <el-table-column align="left" label="商户号" prop="mchId" width="120" show-overflow-tooltip />
         <el-table-column align="left" label="签约AppID" prop="contractAppId" width="140" show-overflow-tooltip />
         <el-table-column align="left" label="签约模板" prop="contractTemplate" width="120" show-overflow-tooltip />
+        <el-table-column align="left" label="验签" prop="verifySign" width="90">
+          <template #default="scope">
+            <el-tag :type="scope.row.verifySign ? 'success' : 'info'">
+              {{ scope.row.verifySign ? '开启' : '关闭' }}
+            </el-tag>
+          </template>
+        </el-table-column>
         <el-table-column align="left" label="签约回调" prop="signCallbackEnabled" width="100">
           <template #default="scope">
             <el-tag :type="scope.row.signCallbackEnabled ? 'success' : 'info'">
@@ -145,6 +152,9 @@
         <el-form-item label="签名Key" prop="signKey">
           <el-input v-model="formData.signKey" placeholder="请输入签名Key" clearable />
         </el-form-item>
+        <el-form-item label="是否验签" prop="verifySign">
+          <el-switch v-model="formData.verifySign" />
+        </el-form-item>
         <el-form-item label="签约模板" prop="contractTemplate">
           <el-input v-model="formData.contractTemplate" placeholder="请输入签约模板" clearable />
         </el-form-item>
@@ -221,6 +231,7 @@ const formData = ref({
   contractAppId: '',
   displayName: '',
   signKey: '',
+  verifySign: true,
   contractTemplate: '',
   signCallbackEnabled: true,
   signCallbackDelay: 0,
@@ -239,7 +250,13 @@ const formData = ref({
 const rule = {
   appId: [{ required: true, message: '请输入应用ID', trigger: 'blur' }],
   mchId: [{ required: true, message: '请输入商户号', trigger: 'blur' }],
-  signKey: [{ required: true, message: '请输入签名Key', trigger: 'blur' }]
+  signKey: [{ validator: (_, value, callback) => {
+    if (formData.value.verifySign && !value) {
+      callback(new Error('验签开启时请输入签名Key'))
+      return
+    }
+    callback()
+  }, trigger: 'blur' }]
 }
 
 const searchInfo = ref({
@@ -325,7 +342,7 @@ const closeDialog = () => {
   elFormRef.value?.resetFields()
   formData.value = {
     appId: '', mchId: '', contractMchId: '', contractAppId: '', displayName: '',
-    signKey: '', contractTemplate: '', signCallbackEnabled: true, signCallbackDelay: 0,
+    signKey: '', verifySign: true, contractTemplate: '', signCallbackEnabled: true, signCallbackDelay: 0,
     deductCallbackEnabled: true, deductCallbackDelay: 0, signTargetStatus: 'ACTIVE',
     signStatusDelay: 0, deductTargetStatus: 'SUCCESS', deductStatusDelay: 0,
     terminateNotifyEnabled: false, signDurationMinutes: 1440, strictDeductRule: false, active: true

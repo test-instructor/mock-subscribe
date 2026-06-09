@@ -3,8 +3,7 @@ package api
 import (
 	"encoding/json"
 	"io"
-	"net"
-	"strings"
+	"time"
 
 	"github.com/flipped-aurora/gin-vue-admin/server/global"
 	"github.com/flipped-aurora/gin-vue-admin/server/model/common/response"
@@ -14,9 +13,9 @@ import (
 	"go.uber.org/zap"
 )
 
-type callback struct{}
+type deductCallback struct{}
 
-func (a *callback) ReceiveContract(c *gin.Context) {
+func (a *deductCallback) ReceiveDeduct(c *gin.Context) {
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
 		ack := model.GenericACK{ReturnCode: model.ErrCodeFail, ReturnMsg: "读取请求失败"}
@@ -25,7 +24,7 @@ func (a *callback) ReceiveContract(c *gin.Context) {
 		return
 	}
 
-	var req model.ContractCallbackRequest
+	var req model.DeductNotifyRequest
 	if err = serviceInfo.XMLCodec.Unmarshal(body, &req); err != nil {
 		ack := model.GenericACK{ReturnCode: model.ErrCodeFail, ReturnMsg: "XML解析失败"}
 		xml, _ := serviceInfo.XMLCodec.Marshal(ack)
@@ -34,27 +33,27 @@ func (a *callback) ReceiveContract(c *gin.Context) {
 	}
 
 	headers, _ := json.Marshal(c.Request.Header)
-	callbackType := model.CallbackTypeContractSign
-	if req.ChangeType == "DELETE" {
-		callbackType = model.CallbackTypeTerminate
-	}
-	record := model.CallbackRecord{
-		MchID:           req.MchID,
-		OutContractCode: req.OutContractCode,
-		ContractCode:    req.ContractID,
-		CallbackType:    callbackType,
-		SourceIP:        clientIP(c),
-		Headers:         string(headers),
-		RawBody:         string(body),
-		ContractStatus:  req.ChangeType,
-		TimeStamp:       req.OperateTime,
-		Sign:            req.Sign,
+	record := model.DeductCallbackRecord{
+		MchID:         req.MchID,
+		OutTradeNo:    req.OutTradeNo,
+		TransactionID: req.TransactionID,
+		TradeType:     req.TradeType,
+		TradeState:    req.TradeState,
+		BankType:      req.BankType,
+		TotalAmount:   req.TotalAmount,
+		CashAmount:    req.CashAmount,
+		TimeEnd:       req.TimeEnd,
+		SourceIP:      clientIP(c),
+		Headers:       string(headers),
+		RawBody:       string(body),
+		Sign:          req.Sign,
 	}
 
-	merchant, contract, locateErr := serviceInfo.CallbackRecord.LocateMerchantAndContract(req)
+	merchant, deductRecord, contract, locateErr := serviceInfo.DeductCallback.LocateMerchantAndDeduct(req)
 	if locateErr == nil {
 		record.MerchantID = merchant.ID
 		record.ContractIDRef = contract.ID
+		record.DeductRecordIDRef = deductRecord.ID
 	}
 
 	verifySign := true
@@ -62,13 +61,13 @@ func (a *callback) ReceiveContract(c *gin.Context) {
 		verifySign = merchant.VerifySign
 	}
 
-	if err = serviceInfo.CallbackRecord.ValidateContractCallback(req, verifySign); err != nil {
+	if err = serviceInfo.DeductCallback.ValidateDeductCallback(req, verifySign); err != nil {
 		record.SignValid = false
 		record.SignErrorMessage = err.Error()
 		ack := model.GenericACK{ReturnCode: model.ErrCodeFail, ReturnMsg: err.Error()}
 		xml, _ := serviceInfo.XMLCodec.Marshal(ack)
 		record.AckXML = xml
-		_ = serviceInfo.CallbackRecord.Create(&record)
+		_ = serviceInfo.DeductCallback.Create(&record)
 		c.Data(200, "application/xml; charset=utf-8", []byte(xml))
 		return
 	}
@@ -76,15 +75,15 @@ func (a *callback) ReceiveContract(c *gin.Context) {
 	if locateErr != nil {
 		record.SignValid = false
 		record.SignErrorMessage = locateErr.Error()
-		ack := model.GenericACK{ReturnCode: model.ErrCodeFail, ReturnMsg: "未找到签约或商户"}
+		ack := model.GenericACK{ReturnCode: model.ErrCodeFail, ReturnMsg: "未找到商户或扣款记录"}
 		xml, _ := serviceInfo.XMLCodec.Marshal(ack)
 		record.AckXML = xml
-		_ = serviceInfo.CallbackRecord.Create(&record)
+		_ = serviceInfo.DeductCallback.Create(&record)
 		c.Data(200, "application/xml; charset=utf-8", []byte(xml))
 		return
 	}
 
-	verifyErr := serviceInfo.CallbackRecord.VerifyContractCallback(req, merchant.VerifySign, merchant.SignKey)
+	verifyErr := serviceInfo.DeductCallback.VerifyDeductCallback(req, merchant.VerifySign, merchant.SignKey)
 	record.SignValid = verifyErr == nil
 	if verifyErr != nil {
 		record.SignErrorMessage = verifyErr.Error()
@@ -96,33 +95,34 @@ func (a *callback) ReceiveContract(c *gin.Context) {
 	}
 	xml, _ := serviceInfo.XMLCodec.Marshal(ack)
 	record.AckXML = xml
-	if err = serviceInfo.CallbackRecord.Create(&record); err != nil {
-		global.GVA_LOG.Error("保存回调记录失败", zap.Error(err))
+	if err = serviceInfo.DeductCallback.Create(&record); err != nil {
+		global.GVA_LOG.Error("保存代扣回调记录失败", zap.Error(err))
+	}
+	if verifyErr == nil {
+		callbackResult := string(body)
+		if err = serviceInfo.Deduct.UpdateDeductRecordByCallback(deductRecord.ID, req.TradeState, req.TransactionID, callbackResult, time.Now().Unix(), "", ""); err != nil {
+			global.GVA_LOG.Error("回写扣款记录状态失败", zap.Error(err))
+		}
 	}
 	c.Data(200, "application/xml; charset=utf-8", []byte(xml))
 }
 
-func (a *callback) GetCallbackRecordList(c *gin.Context) {
-	var pageInfo mockReq.CallbackRecordSearch
+func (a *deductCallback) GetDeductCallbackRecordList(c *gin.Context) {
+	var pageInfo mockReq.DeductCallbackRecordSearch
 	if err := c.ShouldBindQuery(&pageInfo); err != nil {
 		response.FailWithMessage(err.Error(), c)
 		return
 	}
-	list, total, err := serviceInfo.CallbackRecord.GetList(pageInfo)
+	list, total, err := serviceInfo.DeductCallback.GetList(pageInfo)
 	if err != nil {
-		global.GVA_LOG.Error("获取回调记录列表失败", zap.Error(err))
-		response.FailWithMessage("获取回调记录列表失败: "+err.Error(), c)
+		global.GVA_LOG.Error("获取代扣回调记录列表失败", zap.Error(err))
+		response.FailWithMessage("获取代扣回调记录列表失败: "+err.Error(), c)
 		return
 	}
-	response.OkWithDetailed(response.PageResult{
-		List:     list,
-		Total:    total,
-		Page:     pageInfo.Page,
-		PageSize: pageInfo.PageSize,
-	}, "获取成功", c)
+	response.OkWithDetailed(response.PageResult{List: list, Total: total, Page: pageInfo.Page, PageSize: pageInfo.PageSize}, "获取成功", c)
 }
 
-func (a *callback) FindCallbackRecord(c *gin.Context) {
+func (a *deductCallback) FindDeductCallbackRecord(c *gin.Context) {
 	var req struct {
 		ID uint `form:"ID"`
 	}
@@ -130,23 +130,11 @@ func (a *callback) FindCallbackRecord(c *gin.Context) {
 		response.FailWithMessage(err.Error(), c)
 		return
 	}
-	info, err := serviceInfo.CallbackRecord.GetByID(req.ID)
+	info, err := serviceInfo.DeductCallback.GetByID(req.ID)
 	if err != nil {
-		global.GVA_LOG.Error("获取回调记录详情失败", zap.Error(err))
-		response.FailWithMessage("获取回调记录详情失败: "+err.Error(), c)
+		global.GVA_LOG.Error("获取代扣回调记录详情失败", zap.Error(err))
+		response.FailWithMessage("获取代扣回调记录详情失败: "+err.Error(), c)
 		return
 	}
 	response.OkWithData(info, c)
-}
-
-func clientIP(c *gin.Context) string {
-	ip := c.ClientIP()
-	if strings.TrimSpace(ip) != "" {
-		return ip
-	}
-	host, _, err := net.SplitHostPort(c.Request.RemoteAddr)
-	if err == nil {
-		return host
-	}
-	return c.Request.RemoteAddr
 }

@@ -8,6 +8,7 @@ type service struct {
 	Deduct         deduct
 	Callback       callback
 	CallbackRecord callbackRecord
+	DeductCallback deductCallback
 	Signature      signature
 	XMLCodec       xmlCodec
 }

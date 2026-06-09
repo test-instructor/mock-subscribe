@@ -8,9 +8,10 @@ var (
 )
 
 type api struct {
-	Merchant merchant
-	Contract contract
-	Deduct   deduct
-	Wechat   wechat
-	Callback callback
+	Merchant       merchant
+	Contract       contract
+	Deduct         deduct
+	Wechat         wechat
+	Callback       callback
+	DeductCallback deductCallback
 }

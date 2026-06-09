@@ -60,7 +60,7 @@ func (s *callbackRecord) BuildContractSignParams(req model.ContractCallbackReque
 		"return_code":   req.ReturnCode,
 		"result_code":   req.ResultCode,
 		"mch_id":        req.MchID,
-		"contract_code": req.ContractCode,
+		"contract_code": req.OutContractCode,
 		"openid":        req.OpenID,
 		"plan_id":       req.PlanID,
 		"change_type":   req.ChangeType,
@@ -72,8 +72,8 @@ func (s *callbackRecord) BuildContractSignParams(req model.ContractCallbackReque
 
 func (s *callbackRecord) LocateMerchantAndContract(req model.ContractCallbackRequest) (model.Merchant, model.Contract, error) {
 	contract, err := Service.Contract.GetContractByContractID(req.ContractID)
-	if err != nil && strings.TrimSpace(req.ContractCode) != "" {
-		contract, err = Service.Contract.GetContractByOutID(req.ContractCode)
+	if err != nil && strings.TrimSpace(req.OutContractCode) != "" {
+		contract, err = Service.Contract.GetContractByOutID(req.OutContractCode)
 	}
 	if err != nil {
 		return model.Merchant{}, model.Contract{}, err
@@ -85,19 +85,19 @@ func (s *callbackRecord) LocateMerchantAndContract(req model.ContractCallbackReq
 	return merchant, contract, nil
 }
 
-func (s *callbackRecord) VerifyContractCallback(req model.ContractCallbackRequest, key string) error {
+func (s *callbackRecord) VerifyContractCallback(req model.ContractCallbackRequest, verifySign bool, key string) error {
 	params := s.BuildContractSignParams(req)
-	return Service.Signature.Verify(params, key)
+	return Service.Signature.VerifyIfNeeded(verifySign, params, key)
 }
 
-func (s *callbackRecord) ValidateContractCallback(req model.ContractCallbackRequest) error {
+func (s *callbackRecord) ValidateContractCallback(req model.ContractCallbackRequest, verifySign bool) error {
 	if strings.TrimSpace(req.MchID) == "" {
 		return errors.New("mch_id不能为空")
 	}
-	if strings.TrimSpace(req.ContractID) == "" && strings.TrimSpace(req.ContractCode) == "" {
+	if strings.TrimSpace(req.ContractID) == "" && strings.TrimSpace(req.OutContractCode) == "" {
 		return errors.New("contract_id和contract_code不能同时为空")
 	}
-	if strings.TrimSpace(req.Sign) == "" {
+	if !Service.Signature.RequireSignIfNeeded(verifySign, req.Sign) {
 		return errors.New("sign不能为空")
 	}
 	return nil

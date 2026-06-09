@@ -48,21 +48,21 @@ func (s *callback) BuildContractCallbackXML(contract model.Contract, mchID strin
 	}
 	operateTime := time.Now().Format("2006-01-02 15:04:05")
 	notify := model.ContractResultNotify{
-		ReturnCode:   model.ErrCodeSuccess,
-		ResultCode:   model.ErrCodeSuccess,
-		MchID:        mchID,
-		ContractCode: contract.OutContractID,
-		OpenID:       contract.OpenID,
-		PlanID:       contract.PlanID,
-		ChangeType:   changeType,
-		OperateTime:  operateTime,
-		ContractID:   contract.ContractID,
+		ReturnCode:      model.ErrCodeSuccess,
+		ResultCode:      model.ErrCodeSuccess,
+		MchID:           mchID,
+		OutContractCode: contract.OutContractID,
+		OpenID:          contract.OpenID,
+		PlanID:          contract.PlanID,
+		ChangeType:      changeType,
+		OperateTime:     operateTime,
+		ContractID:      contract.ContractID,
 	}
 	notify.Sign = Service.Signature.Sign(map[string]string{
 		"return_code":   notify.ReturnCode,
 		"result_code":   notify.ResultCode,
 		"mch_id":        notify.MchID,
-		"contract_code": notify.ContractCode,
+		"contract_code": notify.OutContractCode,
 		"openid":        notify.OpenID,
 		"plan_id":       notify.PlanID,
 		"change_type":   notify.ChangeType,
@@ -73,6 +73,52 @@ func (s *callback) BuildContractCallbackXML(contract model.Contract, mchID strin
 	return xml
 }
 
-func (s *callback) BuildDeductCallbackXML(record model.DeductRecord) string {
-	return fmt.Sprintf("<xml><transaction_id>%s</transaction_id><status>%s</status><amount>%d</amount></xml>", record.TransactionID, record.Status, record.Amount)
+func (s *callback) BuildDeductCallbackXML(merchant model.Merchant, contract model.Contract, record model.DeductRecord, signType string) string {
+	tradeState := strings.TrimSpace(record.Status)
+	if tradeState == "" {
+		tradeState = model.DeductStatusPending
+	}
+	timeEnd := time.Now().Format("20060102150405")
+	if tradeState == model.DeductStatusPending {
+		timeEnd = ""
+	}
+	nonce := fmt.Sprintf("mock-deduct-%d", time.Now().UnixNano())
+	notify := model.DeductNotifyResponse{
+		ReturnCode:    model.ErrCodeSuccess,
+		ReturnMsg:     "OK",
+		AppID:         merchant.AppID,
+		MchID:         merchant.MchID,
+		OutTradeNo:    record.OutTradeNo,
+		TransactionID: record.TransactionID,
+		TradeType:     "PAP",
+		TradeState:    tradeState,
+		BankType:      "MOCK",
+		TotalAmount:   record.Amount,
+		CashAmount:    record.Amount,
+		TimeEnd:       timeEnd,
+		SignType:      signType,
+		TimeStamp:     fmt.Sprintf("%d", time.Now().Unix()),
+		Nonce:         nonce,
+	}
+	params := map[string]string{
+		"return_code":    notify.ReturnCode,
+		"appid":          notify.AppID,
+		"mch_id":         notify.MchID,
+		"out_trade_no":   notify.OutTradeNo,
+		"transaction_id": notify.TransactionID,
+		"trade_type":     notify.TradeType,
+		"trade_state":    notify.TradeState,
+		"bank_type":      notify.BankType,
+		"total_amount":   fmt.Sprintf("%d", notify.TotalAmount),
+		"cash_amount":    fmt.Sprintf("%d", notify.CashAmount),
+		"time_end":       notify.TimeEnd,
+		"timestamp":      notify.TimeStamp,
+		"nonce":          notify.Nonce,
+	}
+	if strings.TrimSpace(signType) != "" {
+		params["sign_type"] = signType
+	}
+	notify.Sign = Service.Signature.Sign(params, merchant.SignKey)
+	xml, _ := Service.XMLCodec.Marshal(notify)
+	return xml
 }

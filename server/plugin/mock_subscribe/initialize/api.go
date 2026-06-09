@@ -27,6 +27,9 @@ func Api(ctx context.Context) {
 		{Path: "/papay/notify", Description: "接收签约回调", ApiGroup: "微信订阅Mock-回调", Method: "POST"},
 		{Path: "/papay/callback-records", Description: "获取回调记录列表", ApiGroup: "微信订阅Mock-回调", Method: "GET"},
 		{Path: "/papay/callback-record", Description: "获取回调记录详情", ApiGroup: "微信订阅Mock-回调", Method: "GET"},
+		{Path: "/pay/pappaynotify", Description: "接收代扣回调", ApiGroup: "微信订阅Mock-代扣回调", Method: "POST"},
+		{Path: "/mockSubscribeDeductCallback/getDeductCallbackRecordList", Description: "获取代扣回调记录列表", ApiGroup: "微信订阅Mock-代扣回调", Method: "GET"},
+		{Path: "/mockSubscribeDeductCallback/findDeductCallbackRecord", Description: "获取代扣回调记录详情", ApiGroup: "微信订阅Mock-代扣回调", Method: "GET"},
 
 		{Path: "/papay/preentrustweb", Description: "APP纯签约", ApiGroup: "微信订阅Mock-微信接口", Method: "POST"},
 		{Path: "/papay/querycontract", Description: "查询签约关系", ApiGroup: "微信订阅Mock-微信接口", Method: "POST"},
