@@ -90,6 +90,8 @@
         </el-table-column>
         <el-table-column align="left" label="签约目标状态" prop="signTargetStatus" width="120" />
         <el-table-column align="left" label="签约延时(秒)" prop="signStatusDelay" width="110" />
+        <el-table-column align="left" label="解约目标状态" prop="terminateTargetStatus" width="120" />
+        <el-table-column align="left" label="解约延时(秒)" prop="terminateStatusDelay" width="110" />
         <el-table-column align="left" label="扣款目标状态" prop="deductTargetStatus" width="120" />
         <el-table-column align="left" label="扣款延时(秒)" prop="deductStatusDelay" width="110" />
         <el-table-column align="left" label="签约时长(分)" prop="signDurationMinutes" width="110" />
@@ -180,6 +182,29 @@
             <el-input-number v-model="formData.signDurationMinutes" :min="1" :max="43200" />
           </el-form-item>
         </div>
+        <el-divider content-position="left">解约配置</el-divider>
+        <div class="flex flex-wrap gap-4">
+          <el-form-item label="解约通知商户" prop="terminateNotifyEnabled">
+            <el-switch v-model="formData.terminateNotifyEnabled" />
+          </el-form-item>
+          <el-form-item label="解约回调开关" prop="terminateCallbackEnabled">
+            <el-switch v-model="formData.terminateCallbackEnabled" />
+          </el-form-item>
+          <el-form-item label="解约回调延时(秒)" prop="terminateCallbackDelay">
+            <el-input-number v-model="formData.terminateCallbackDelay" :min="0" :max="3600" />
+          </el-form-item>
+          <el-form-item label="解约目标状态" prop="terminateTargetStatus">
+            <el-select v-model="formData.terminateTargetStatus" placeholder="选择状态" style="width: 100%" clearable>
+              <el-option label="已解约(TERMINATED)" value="TERMINATED" />
+              <el-option label="已暂停(PAUSE)" value="PAUSE" />
+              <el-option label="已到期(EXPIRED)" value="EXPIRED" />
+              <el-option label="签约失败(FAILED)" value="FAILED" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="解约状态延时(秒)" prop="terminateStatusDelay">
+            <el-input-number v-model="formData.terminateStatusDelay" :min="0" :max="3600" />
+          </el-form-item>
+        </div>
         <el-divider content-position="left">扣款配置</el-divider>
         <div class="flex flex-wrap gap-4">
           <el-form-item label="扣款回调开关" prop="deductCallbackEnabled">
@@ -199,9 +224,6 @@
           </el-form-item>
           <el-form-item label="扣款状态延时(秒)" prop="deductStatusDelay">
             <el-input-number v-model="formData.deductStatusDelay" :min="0" :max="3600" />
-          </el-form-item>
-          <el-form-item label="解约通知商户" prop="terminateNotifyEnabled">
-            <el-switch v-model="formData.terminateNotifyEnabled" />
           </el-form-item>
           <el-form-item label="严格扣费规则" prop="strictDeductRule">
             <el-switch v-model="formData.strictDeductRule" />
@@ -242,6 +264,10 @@ const formData = ref({
   deductTargetStatus: 'SUCCESS',
   deductStatusDelay: 0,
   terminateNotifyEnabled: false,
+  terminateCallbackEnabled: false,
+  terminateCallbackDelay: 0,
+  terminateTargetStatus: 'TERMINATED',
+  terminateStatusDelay: 0,
   signDurationMinutes: 1440,
   strictDeductRule: false,
   active: true
@@ -345,7 +371,9 @@ const closeDialog = () => {
     signKey: '', verifySign: true, contractTemplate: '', signCallbackEnabled: true, signCallbackDelay: 0,
     deductCallbackEnabled: true, deductCallbackDelay: 0, signTargetStatus: 'ACTIVE',
     signStatusDelay: 0, deductTargetStatus: 'SUCCESS', deductStatusDelay: 0,
-    terminateNotifyEnabled: false, signDurationMinutes: 1440, strictDeductRule: false, active: true
+    terminateNotifyEnabled: false, terminateCallbackEnabled: false, terminateCallbackDelay: 0,
+    terminateTargetStatus: 'TERMINATED', terminateStatusDelay: 0,
+    signDurationMinutes: 1440, strictDeductRule: false, active: true
   }
 }
 

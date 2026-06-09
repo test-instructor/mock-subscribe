@@ -35,9 +35,13 @@ type Merchant struct {
 	DeductStatusDelay  int    `json:"deductStatusDelay" form:"deductStatusDelay" gorm:"column:deduct_status_delay;comment:扣款状态延时(秒)"`
 
 	// 行为配置
-	TerminateNotifyEnabled bool `json:"terminateNotifyEnabled" form:"terminateNotifyEnabled" gorm:"column:terminate_notify_enabled;comment:解约是否通知商户"`
-	SignDurationMinutes    int  `json:"signDurationMinutes" form:"signDurationMinutes" gorm:"column:sign_duration_minutes;comment:签约时长(分钟)"`
-	StrictDeductRule       bool `json:"strictDeductRule" form:"strictDeductRule" gorm:"column:strict_deduct_rule;comment:是否严格按扣费规则"`
+	TerminateNotifyEnabled   bool   `json:"terminateNotifyEnabled" form:"terminateNotifyEnabled" gorm:"column:terminate_notify_enabled;comment:解约是否通知商户"`
+	TerminateCallbackEnabled bool   `json:"terminateCallbackEnabled" form:"terminateCallbackEnabled" gorm:"column:terminate_callback_enabled;comment:解约回调开关"`
+	TerminateCallbackDelay   int    `json:"terminateCallbackDelay" form:"terminateCallbackDelay" gorm:"column:terminate_callback_delay;comment:解约回调延时(秒)"`
+	TerminateTargetStatus    string `json:"terminateTargetStatus" form:"terminateTargetStatus" gorm:"column:terminate_target_status;comment:解约目标状态"`
+	TerminateStatusDelay     int    `json:"terminateStatusDelay" form:"terminateStatusDelay" gorm:"column:terminate_status_delay;comment:解约状态延时(秒)"`
+	SignDurationMinutes      int    `json:"signDurationMinutes" form:"signDurationMinutes" gorm:"column:sign_duration_minutes;comment:签约时长(分钟)"`
+	StrictDeductRule         bool   `json:"strictDeductRule" form:"strictDeductRule" gorm:"column:strict_deduct_rule;comment:是否严格按扣费规则"`
 
 	// 状态
 	Active bool `json:"active" form:"active" gorm:"column:active;default:true;comment:是否启用"`

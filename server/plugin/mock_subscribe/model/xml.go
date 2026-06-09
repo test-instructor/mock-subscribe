@@ -10,8 +10,10 @@ type SignContractRequest struct {
 	AppID                  string   `xml:"appid"`                    // 应用ID
 	MchID                  string   `xml:"mch_id"`                   // 商户号
 	PlanID                 string   `xml:"plan_id"`                  // 签约模板ID
-	OutContractCode        string   `xml:"out_contract_code"`        // 用户侧签约协议号
-	OutUserID              string   `xml:"outer_openid"`             // 用户OpenID
+	ContractCode           string   `xml:"contract_code"`            // 用户侧签约协议号（官方字段）
+	OutContractCode        string   `xml:"out_contract_code"`        // 用户侧签约协议号（兼容旧字段）
+	OpenID                 string   `xml:"openid"`                   // 用户OpenID（官方字段）
+	OutUserID              string   `xml:"outer_openid"`             // 用户OpenID（兼容旧字段）
 	ContractDisplayAccount string   `xml:"contract_display_account"` // 用户账户展示名称
 	NotifyURL              string   `xml:"notify_url"`               // 回调地址
 	SignType               string   `xml:"sign_type"`                // 签名类型
@@ -24,20 +26,20 @@ type SignContractRequest struct {
 // SignContractResponse APP纯签约响应(XML)
 type SignContractResponse struct {
 	XMLName         xml.Name `xml:"xml"`
-	ReturnCode      string   `xml:"return_code"`       // 返回状态码
-	ReturnMsg       string   `xml:"return_msg"`        // 返回信息
-	ResultCode      string   `xml:"result_code"`       // 业务结果码
-	ErrCode         string   `xml:"err_code"`          // 错误码
-	ErrCodeDes      string   `xml:"err_code_des"`      // 错误码描述
-	ContractID      string   `xml:"contract_id"`       // 协议号
-	ContractExtID   string   `xml:"contract_ext_id"`   // 签约扩展ID
-	OperationType   string   `xml:"operation_type"`    // 操作类型
-	MchID           string   `xml:"mch_id"`            // 商户号
-	OutContractCode string   `xml:"out_contract_code"` // 用户侧签约协议号
-	SignType        string   `xml:"sign_type"`         // 签名类型
-	TimeStamp       string   `xml:"timestamp"`         // 时间戳
-	Nonce           string   `xml:"nonce"`             // 随机字符串
-	Sign            string   `xml:"sign"`              // 签名
+	ReturnCode      string   `xml:"return_code"`     // 返回状态码
+	ReturnMsg       string   `xml:"return_msg"`      // 返回信息
+	ResultCode      string   `xml:"result_code"`     // 业务结果码
+	ErrCode         string   `xml:"err_code"`        // 错误码
+	ErrCodeDes      string   `xml:"err_code_des"`    // 错误码描述
+	ContractID      string   `xml:"contract_id"`     // 协议号
+	ContractExtID   string   `xml:"contract_ext_id"` // 签约扩展ID
+	OperationType   string   `xml:"operation_type"`  // 操作类型
+	MchID           string   `xml:"mch_id"`          // 商户号
+	OutContractCode string   `xml:"contract_code"`   // 用户侧签约协议号
+	SignType        string   `xml:"sign_type"`       // 签名类型
+	TimeStamp       string   `xml:"timestamp"`       // 时间戳
+	Nonce           string   `xml:"nonce"`           // 随机字符串
+	Sign            string   `xml:"sign"`            // 签名
 }
 
 // ====================== 申请扣款请求/响应 ======================
@@ -175,6 +177,8 @@ type QueryContractRequest struct {
 	AppID           string   `xml:"appid"`
 	MchID           string   `xml:"mch_id"`
 	ContractID      string   `xml:"contract_id"`
+	PlanID          string   `xml:"plan_id"`
+	ContractCode    string   `xml:"contract_code"`
 	OutContractCode string   `xml:"out_contract_code"`
 	SignType        string   `xml:"sign_type"`
 	TimeStamp       string   `xml:"timestamp"`
@@ -205,17 +209,21 @@ type QueryContractResponse struct {
 
 // TerminateContractRequest 申请解约请求(XML)
 type TerminateContractRequest struct {
-	XMLName            xml.Name `xml:"xml"`
-	AppID              string   `xml:"appid"`
-	MchID              string   `xml:"mch_id"`
-	ContractID         string   `xml:"contract_id"`
-	OutContractCode    string   `xml:"out_contract_code"`
-	ContractStatus     string   `xml:"contract_status"`
-	ContractEndingType string   `xml:"contract_ending_type"`
-	SignType           string   `xml:"sign_type"`
-	TimeStamp          string   `xml:"timestamp"`
-	Nonce              string   `xml:"nonce"`
-	Sign               string   `xml:"sign"`
+	XMLName                   xml.Name `xml:"xml"`
+	AppID                     string   `xml:"appid"`
+	MchID                     string   `xml:"mch_id"`
+	ContractID                string   `xml:"contract_id"`
+	PlanID                    string   `xml:"plan_id"`
+	ContractCode              string   `xml:"contract_code"`
+	OutContractCode           string   `xml:"out_contract_code"`
+	ContractTerminationRemark string   `xml:"contract_termination_remark"`
+	ContractStatus            string   `xml:"contract_status"`
+	ContractEndingType        string   `xml:"contract_ending_type"`
+	Version                   string   `xml:"version"`
+	SignType                  string   `xml:"sign_type"`
+	TimeStamp                 string   `xml:"timestamp"`
+	Nonce                     string   `xml:"nonce"`
+	Sign                      string   `xml:"sign"`
 }
 
 // TerminateContractResponse 申请解约响应(XML)

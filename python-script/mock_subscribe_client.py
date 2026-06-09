@@ -149,8 +149,8 @@ def make_sign_request(config: dict, out_contract_code: str, openid: str) -> dict
         'appid': config['app_id'],
         'mch_id': config['mch_id'],
         'plan_id': config['plan_id'],
-        'out_contract_code': out_contract_code,
-        'outer_openid': openid,
+        'contract_code': out_contract_code,
+        'openid': openid,
         'contract_display_account': config['contract_display_account'],
         'notify_url': config['notify_url'],
         'sign_type': config['sign_type'],
@@ -167,7 +167,28 @@ def make_contract_query_request(config: dict, contract_id: str, out_contract_cod
         'appid': config['app_id'],
         'mch_id': config['mch_id'],
         'contract_id': contract_id,
+        'plan_id': config['plan_id'],
+        'contract_code': out_contract_code,
+        'sign_type': config['sign_type'],
+        'timestamp': str(int(time.time())),
+        'nonce': random_nonce(),
+    }
+    payload['sign'] = build_sign(payload, config['sign_key'])
+    return payload
+
+
+def make_terminate_request(config: dict, contract_id: str, out_contract_code: str, contract_ending_type: str = 'MERCHANT_REQUEST', remark: str = '') -> dict:
+    payload = {
+        'appid': config['app_id'],
+        'mch_id': config['mch_id'],
+        'contract_id': contract_id,
+        'plan_id': config['plan_id'],
+        'contract_code': out_contract_code,
         'out_contract_code': out_contract_code,
+        'contract_termination_remark': remark,
+        'contract_status': config.get('terminate_target_status', 'TERMINATED'),
+        'contract_ending_type': contract_ending_type,
+        'version': '1.0',
         'sign_type': config['sign_type'],
         'timestamp': str(int(time.time())),
         'nonce': random_nonce(),
@@ -382,6 +403,38 @@ def query_flow(config: dict, contract_id: str, out_contract_code: str) -> dict:
         return_code=resp_data.get('return_code', ''),
         result_code=resp_data.get('result_code', ''),
         response_sign_valid=sign_valid,
+    )
+    return result
+
+
+def terminate_flow(config: dict, contract_id: str, out_contract_code: str, contract_ending_type: str = 'MERCHANT_REQUEST', remark: str = '') -> dict:
+    log_status('START', '开始申请解约', contract_id=contract_id, out_contract_code=out_contract_code, contract_ending_type=contract_ending_type)
+    req = make_terminate_request(config, contract_id, out_contract_code, contract_ending_type, remark)
+    xml_payload = dict_to_xml(req)
+    resp_xml = post_xml(config['base_url'], config.get('terminate_path', '/papay/deletecontract'), xml_payload)
+    resp_data = xml_to_dict(resp_xml)
+    sign_valid = verify_sign(resp_data, config['sign_key']) if resp_data.get('sign') else None
+    result = {
+        'request': req,
+        'request_xml': xml_payload,
+        'response_xml': resp_xml,
+        'response': resp_data,
+        'response_sign_valid': sign_valid,
+        'contract_id': resp_data.get('contract_id', contract_id),
+        'out_contract_code': out_contract_code,
+        'contract_status': resp_data.get('contract_status', ''),
+        'notify_url': config['notify_url'],
+    }
+    log_status(
+        'SUCCESS' if is_xml_api_success(resp_data) else 'FAILED',
+        '申请解约完成',
+        contract_id=result['contract_id'],
+        out_contract_code=out_contract_code,
+        contract_status=result['contract_status'],
+        return_code=resp_data.get('return_code', ''),
+        result_code=resp_data.get('result_code', ''),
+        response_sign_valid=sign_valid,
+        notify_url=result['notify_url'],
     )
     return result
 
@@ -678,6 +731,12 @@ def main() -> int:
     query_cmd.add_argument('--contract-id', required=True)
     query_cmd.add_argument('--out-contract-code', required=True)
 
+    terminate_cmd = sub.add_parser('terminate', help='send contract terminate request')
+    terminate_cmd.add_argument('--contract-id', required=True)
+    terminate_cmd.add_argument('--out-contract-code', required=True)
+    terminate_cmd.add_argument('--contract-ending-type', default='MERCHANT_REQUEST')
+    terminate_cmd.add_argument('--remark', default='')
+
     deduct_cmd = sub.add_parser('deduct', help='query contract until active, then apply deduct and query order')
     deduct_cmd.add_argument('--contract-id', required=True)
     deduct_cmd.add_argument('--out-contract-code', required=True)
@@ -703,6 +762,8 @@ def main() -> int:
         result = wait_callback_flow(config, args.out_contract_code, args.kind)
     elif command == 'query':
         result = query_flow(config, args.contract_id, args.out_contract_code)
+    elif command == 'terminate':
+        result = terminate_flow(config, args.contract_id, args.out_contract_code, args.contract_ending_type, args.remark)
     elif command == 'deduct':
         result = deduct_after_query_flow(config, args.contract_id, args.out_contract_code, args.total_amount, args.out_trade_no or None)
     elif command == 'query-order':

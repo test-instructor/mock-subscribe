@@ -28,27 +28,31 @@ func (s *merchant) UpdateMerchant(info *model.Merchant) error {
 		return err
 	}
 	updates := map[string]any{
-		"app_id":                   info.AppID,
-		"mch_id":                   info.MchID,
-		"contract_mch_id":          info.ContractMchID,
-		"contract_app_id":          info.ContractAppID,
-		"display_name":             info.DisplayName,
-		"sign_key":                 info.SignKey,
-		"verify_sign":              info.VerifySign,
-		"contract_template":        info.ContractTemplate,
-		"sign_callback_enabled":    info.SignCallbackEnabled,
-		"sign_callback_delay":      info.SignCallbackDelay,
-		"deduct_callback_enabled":  info.DeductCallbackEnabled,
-		"deduct_callback_delay":    info.DeductCallbackDelay,
-		"sign_target_status":       info.SignTargetStatus,
-		"sign_status_delay":        info.SignStatusDelay,
-		"deduct_target_status":     info.DeductTargetStatus,
-		"deduct_status_delay":      info.DeductStatusDelay,
-		"terminate_notify_enabled": info.TerminateNotifyEnabled,
-		"sign_duration_minutes":    info.SignDurationMinutes,
-		"strict_deduct_rule":       info.StrictDeductRule,
-		"active":                   info.Active,
-		"updated_at":               time.Now(),
+		"app_id":                     info.AppID,
+		"mch_id":                     info.MchID,
+		"contract_mch_id":            info.ContractMchID,
+		"contract_app_id":            info.ContractAppID,
+		"display_name":               info.DisplayName,
+		"sign_key":                   info.SignKey,
+		"verify_sign":                info.VerifySign,
+		"contract_template":          info.ContractTemplate,
+		"sign_callback_enabled":      info.SignCallbackEnabled,
+		"sign_callback_delay":        info.SignCallbackDelay,
+		"deduct_callback_enabled":    info.DeductCallbackEnabled,
+		"deduct_callback_delay":      info.DeductCallbackDelay,
+		"sign_target_status":         info.SignTargetStatus,
+		"sign_status_delay":          info.SignStatusDelay,
+		"deduct_target_status":       info.DeductTargetStatus,
+		"deduct_status_delay":        info.DeductStatusDelay,
+		"terminate_notify_enabled":   info.TerminateNotifyEnabled,
+		"terminate_callback_enabled": info.TerminateCallbackEnabled,
+		"terminate_callback_delay":   info.TerminateCallbackDelay,
+		"terminate_target_status":    info.TerminateTargetStatus,
+		"terminate_status_delay":     info.TerminateStatusDelay,
+		"sign_duration_minutes":      info.SignDurationMinutes,
+		"strict_deduct_rule":         info.StrictDeductRule,
+		"active":                     info.Active,
+		"updated_at":                 time.Now(),
 	}
 	return global.GVA_DB.Model(&model.Merchant{}).Where("id = ?", info.ID).Updates(updates).Error
 }
@@ -108,7 +112,7 @@ func (s *merchant) validateMerchant(info *model.Merchant) error {
 	if info.VerifySign && strings.TrimSpace(info.SignKey) == "" {
 		return errors.New("验签开启时签名key不能为空")
 	}
-	if info.SignStatusDelay < 0 || info.SignCallbackDelay < 0 || info.DeductStatusDelay < 0 || info.DeductCallbackDelay < 0 {
+	if info.SignStatusDelay < 0 || info.SignCallbackDelay < 0 || info.DeductStatusDelay < 0 || info.DeductCallbackDelay < 0 || info.TerminateStatusDelay < 0 || info.TerminateCallbackDelay < 0 {
 		return errors.New("延时配置不能小于0")
 	}
 	if info.SignDurationMinutes <= 0 {
@@ -120,11 +124,17 @@ func (s *merchant) validateMerchant(info *model.Merchant) error {
 	if info.DeductTargetStatus == "" {
 		info.DeductTargetStatus = model.DeductStatusSuccess
 	}
+	if info.TerminateTargetStatus == "" {
+		info.TerminateTargetStatus = model.ContractStatusTerminated
+	}
 	if !s.validContractStatus(info.SignTargetStatus) {
 		return errors.New("签约目标状态不合法")
 	}
 	if !s.validDeductStatus(info.DeductTargetStatus) {
 		return errors.New("扣款目标状态不合法")
+	}
+	if !s.validContractStatus(info.TerminateTargetStatus) {
+		return errors.New("解约目标状态不合法")
 	}
 	if info.CreatedAt.IsZero() {
 		info.CreatedAt = time.Now()

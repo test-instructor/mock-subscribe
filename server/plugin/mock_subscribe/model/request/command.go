@@ -31,9 +31,13 @@ type MerchantInfo struct {
 	DeductTargetStatus string `json:"deductTargetStatus" gorm:"column:deduct_target_status"`
 	DeductStatusDelay  int    `json:"deductStatusDelay" gorm:"column:deduct_status_delay"`
 
-	TerminateNotifyEnabled bool `json:"terminateNotifyEnabled" gorm:"column:terminate_notify_enabled"`
-	SignDurationMinutes    int  `json:"signDurationMinutes" gorm:"column:sign_duration_minutes"`
-	StrictDeductRule       bool `json:"strictDeductRule" gorm:"column:strict_deduct_rule"`
+	TerminateNotifyEnabled   bool   `json:"terminateNotifyEnabled" gorm:"column:terminate_notify_enabled"`
+	TerminateCallbackEnabled bool   `json:"terminateCallbackEnabled" gorm:"column:terminate_callback_enabled"`
+	TerminateCallbackDelay   int    `json:"terminateCallbackDelay" gorm:"column:terminate_callback_delay"`
+	TerminateTargetStatus    string `json:"terminateTargetStatus" gorm:"column:terminate_target_status"`
+	TerminateStatusDelay     int    `json:"terminateStatusDelay" gorm:"column:terminate_status_delay"`
+	SignDurationMinutes      int    `json:"signDurationMinutes" gorm:"column:sign_duration_minutes"`
+	StrictDeductRule         bool   `json:"strictDeductRule" gorm:"column:strict_deduct_rule"`
 
 	Active bool `json:"active" gorm:"column:active"`
 }

@@ -14,6 +14,20 @@ import (
 
 type wechat struct{}
 
+func normalizeContractCode(contractCode string, legacyCode string) string {
+	if strings.TrimSpace(contractCode) != "" {
+		return strings.TrimSpace(contractCode)
+	}
+	return strings.TrimSpace(legacyCode)
+}
+
+func normalizeOpenID(openID string, legacyOpenID string) string {
+	if strings.TrimSpace(openID) != "" {
+		return strings.TrimSpace(openID)
+	}
+	return strings.TrimSpace(legacyOpenID)
+}
+
 func (a *wechat) ContractSign(c *gin.Context) {
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
@@ -35,9 +49,12 @@ func (a *wechat) ContractSign(c *gin.Context) {
 		return
 	}
 
+	contractCode := normalizeContractCode(req.ContractCode, req.OutContractCode)
+	openID := normalizeOpenID(req.OpenID, req.OutUserID)
+
 	params := map[string]string{
-		"appid": req.AppID, "mch_id": req.MchID, "plan_id": req.PlanID, "out_contract_code": req.OutContractCode,
-		"outer_openid": req.OutUserID, "contract_display_account": req.ContractDisplayAccount, "notify_url": req.NotifyURL,
+		"appid": req.AppID, "mch_id": req.MchID, "plan_id": req.PlanID, "contract_code": contractCode,
+		"openid": openID, "contract_display_account": req.ContractDisplayAccount, "notify_url": req.NotifyURL,
 		"sign_type": req.SignType, "version": req.Version, "timestamp": req.TimeStamp, "nonce": req.Nonce, "sign": req.Sign,
 	}
 	if err = serviceInfo.Signature.VerifyIfNeeded(merchant.VerifySign, params, merchant.SignKey); err != nil {
@@ -47,7 +64,7 @@ func (a *wechat) ContractSign(c *gin.Context) {
 		return
 	}
 
-	if serviceInfo.Contract.HasActiveContract(req.OutContractCode) || serviceInfo.Contract.HasActiveContractByUser(merchant.ID, req.OutUserID, req.OutUserID) {
+	if serviceInfo.Contract.HasActiveContract(contractCode) || serviceInfo.Contract.HasActiveContractByUser(merchant.ID, openID, openID) {
 		resp := model.SignContractResponse{ReturnCode: model.ErrCodeFail, ReturnMsg: "重复签约", ResultCode: model.ErrCodeFail, ErrCode: model.ErrCodeSignExists, ErrCodeDes: "已有有效签约关系"}
 		xml, _ := serviceInfo.XMLCodec.Marshal(resp)
 		c.Data(200, "application/xml; charset=utf-8", []byte(xml))
@@ -56,16 +73,16 @@ func (a *wechat) ContractSign(c *gin.Context) {
 
 	contract := model.Contract{
 		MerchantID:    merchant.ID,
-		OpenID:        req.OutUserID,
-		OutUserID:     req.OutUserID,
-		OutContractID: req.OutContractCode,
+		OpenID:        openID,
+		OutUserID:     openID,
+		OutContractID: contractCode,
 		PlanID:        req.PlanID,
 		NotifyURL:     req.NotifyURL,
 		RequestData:   string(body),
 	}
 	statusRecord := model.ContractStatusRecord{
 		MerchantID:     merchant.ID,
-		OutContractID:  req.OutContractCode,
+		OutContractID:  contractCode,
 		ContractStatus: model.ContractStatusPending,
 		IsFirstDeduct:  true,
 	}
@@ -106,21 +123,21 @@ func (a *wechat) ContractSign(c *gin.Context) {
 		ContractExtID:   signSerialNo,
 		OperationType:   "sign",
 		MchID:           merchant.MchID,
-		OutContractCode: req.OutContractCode,
+		OutContractCode: contractCode,
 		SignType:        req.SignType,
 		TimeStamp:       strconv.FormatInt(time.Now().Unix(), 10),
 		Nonce:           req.Nonce,
 	}
 	resp.Sign = serviceInfo.Signature.Sign(map[string]string{
-		"return_code":       model.ErrCodeSuccess,
-		"result_code":       model.ErrCodeSuccess,
-		"contract_id":       contractID,
-		"contract_ext_id":   signSerialNo,
-		"mch_id":            merchant.MchID,
-		"out_contract_code": req.OutContractCode,
-		"sign_type":         req.SignType,
-		"timestamp":         resp.TimeStamp,
-		"nonce":             resp.Nonce,
+		"return_code":     model.ErrCodeSuccess,
+		"result_code":     model.ErrCodeSuccess,
+		"contract_id":     contractID,
+		"contract_ext_id": signSerialNo,
+		"mch_id":          merchant.MchID,
+		"contract_code":   contractCode,
+		"sign_type":       req.SignType,
+		"timestamp":       resp.TimeStamp,
+		"nonce":           resp.Nonce,
 	}, merchant.SignKey)
 	xmlResp, _ := serviceInfo.XMLCodec.Marshal(resp)
 	_ = serviceInfo.Deduct.UpdateContractRecordResponse(record.ID, xmlResp, merchant.SignTargetStatus)
@@ -157,15 +174,17 @@ func (a *wechat) QueryContract(c *gin.Context) {
 		c.Data(200, "application/xml; charset=utf-8", []byte(xml))
 		return
 	}
+	contractCode := normalizeContractCode(req.ContractCode, req.OutContractCode)
 	params := map[string]string{
-		"appid":             req.AppID,
-		"mch_id":            req.MchID,
-		"contract_id":       req.ContractID,
-		"out_contract_code": req.OutContractCode,
-		"sign_type":         req.SignType,
-		"timestamp":         req.TimeStamp,
-		"nonce":             req.Nonce,
-		"sign":              req.Sign,
+		"appid":         req.AppID,
+		"mch_id":        req.MchID,
+		"contract_id":   req.ContractID,
+		"plan_id":       req.PlanID,
+		"contract_code": contractCode,
+		"sign_type":     req.SignType,
+		"timestamp":     req.TimeStamp,
+		"nonce":         req.Nonce,
+		"sign":          req.Sign,
 	}
 	if err = serviceInfo.Signature.VerifyIfNeeded(merchant.VerifySign, params, merchant.SignKey); err != nil {
 		resp := model.QueryContractResponse{ReturnCode: model.ErrCodeFail, ReturnMsg: "签名校验失败", ResultCode: model.ErrCodeFail, ErrCode: model.ErrCodeInvalidSign, ErrCodeDes: err.Error()}
@@ -178,8 +197,8 @@ func (a *wechat) QueryContract(c *gin.Context) {
 	if strings.TrimSpace(req.ContractID) != "" {
 		contract, err = serviceInfo.Deduct.GetContractByContractIDFromDB(req.ContractID)
 	}
-	if err != nil && strings.TrimSpace(req.OutContractCode) != "" {
-		contract, err = serviceInfo.Deduct.GetContractFromDB(req.OutContractCode)
+	if err != nil && strings.TrimSpace(contractCode) != "" {
+		contract, err = serviceInfo.Deduct.GetContractFromDB(contractCode)
 	}
 	if err != nil {
 		resp := model.QueryContractResponse{ReturnCode: model.ErrCodeFail, ReturnMsg: "签约不存在", ResultCode: model.ErrCodeFail, ErrCode: model.ErrCodeSignNotFound, ErrCodeDes: "未找到签约关系"}
@@ -243,17 +262,19 @@ func (a *wechat) TerminateContract(c *gin.Context) {
 		c.Data(200, "application/xml; charset=utf-8", []byte(xml))
 		return
 	}
+	contractCode := normalizeContractCode(req.ContractCode, req.OutContractCode)
 	params := map[string]string{
-		"appid":                req.AppID,
-		"mch_id":               req.MchID,
-		"contract_id":          req.ContractID,
-		"out_contract_code":    req.OutContractCode,
-		"contract_status":      req.ContractStatus,
-		"contract_ending_type": req.ContractEndingType,
-		"sign_type":            req.SignType,
-		"timestamp":            req.TimeStamp,
-		"nonce":                req.Nonce,
-		"sign":                 req.Sign,
+		"appid":                       req.AppID,
+		"mch_id":                      req.MchID,
+		"contract_id":                 req.ContractID,
+		"plan_id":                     req.PlanID,
+		"contract_code":               contractCode,
+		"contract_termination_remark": req.ContractTerminationRemark,
+		"version":                     req.Version,
+		"sign_type":                   req.SignType,
+		"timestamp":                   req.TimeStamp,
+		"nonce":                       req.Nonce,
+		"sign":                        req.Sign,
 	}
 	if err = serviceInfo.Signature.VerifyIfNeeded(merchant.VerifySign, params, merchant.SignKey); err != nil {
 		resp := model.TerminateContractResponse{ReturnCode: model.ErrCodeFail, ReturnMsg: "签名校验失败", ResultCode: model.ErrCodeFail, ErrCode: model.ErrCodeInvalidSign, ErrCodeDes: err.Error()}
@@ -266,8 +287,8 @@ func (a *wechat) TerminateContract(c *gin.Context) {
 	if strings.TrimSpace(req.ContractID) != "" {
 		contract, err = serviceInfo.Deduct.GetContractByContractIDFromDB(req.ContractID)
 	}
-	if err != nil && strings.TrimSpace(req.OutContractCode) != "" {
-		contract, err = serviceInfo.Deduct.GetContractFromDB(req.OutContractCode)
+	if err != nil && strings.TrimSpace(contractCode) != "" {
+		contract, err = serviceInfo.Deduct.GetContractFromDB(contractCode)
 	}
 	if err != nil {
 		resp := model.TerminateContractResponse{ReturnCode: model.ErrCodeFail, ReturnMsg: "签约不存在", ResultCode: model.ErrCodeFail, ErrCode: model.ErrCodeSignNotFound, ErrCodeDes: "未找到签约关系"}
@@ -280,15 +301,34 @@ func (a *wechat) TerminateContract(c *gin.Context) {
 	if terminateType == "" {
 		terminateType = model.TerminateTypeMerchantRequest
 	}
-	_ = serviceInfo.Contract.UpdateContractStatus(contract.ID, model.ContractStatusTerminated, terminateType)
-	_ = serviceInfo.Deduct.SetContractStatus(contract.ID, model.ContractStatusTerminated, terminateType)
+	terminateStatus := strings.TrimSpace(merchant.TerminateTargetStatus)
+	if terminateStatus == "" {
+		terminateStatus = model.ContractStatusTerminated
+	}
+	terminateCallbackEnabled := merchant.TerminateCallbackEnabled || merchant.TerminateNotifyEnabled
+
+	record := model.ContractRecord{
+		ContractID:    contract.ID,
+		MerchantID:    merchant.ID,
+		OperationType: "terminate",
+		RequestXML:    string(body),
+		CallbackURL:   contract.NotifyURL,
+		Status:        model.ContractStatusPending,
+	}
+	_ = serviceInfo.Deduct.CreateContractRecord(&record)
+
+	if merchant.TerminateStatusDelay > 0 {
+		time.Sleep(time.Duration(merchant.TerminateStatusDelay) * time.Second)
+	}
+	_ = serviceInfo.Contract.UpdateContractStatus(contract.ID, terminateStatus, terminateType)
+	_ = serviceInfo.Deduct.SetContractStatus(contract.ID, terminateStatus, terminateType)
 
 	resp := model.TerminateContractResponse{
 		ReturnCode:     model.ErrCodeSuccess,
 		ReturnMsg:      "OK",
 		ResultCode:     model.ErrCodeSuccess,
 		ContractID:     contract.ContractID,
-		ContractStatus: model.ContractStatusTerminated,
+		ContractStatus: terminateStatus,
 		SignType:       req.SignType,
 		TimeStamp:      strconv.FormatInt(time.Now().Unix(), 10),
 		Nonce:          req.Nonce,
@@ -303,6 +343,20 @@ func (a *wechat) TerminateContract(c *gin.Context) {
 		"nonce":           resp.Nonce,
 	}, merchant.SignKey)
 	xmlResp, _ := serviceInfo.XMLCodec.Marshal(resp)
+	_ = serviceInfo.Deduct.UpdateContractRecordResponse(record.ID, xmlResp, terminateStatus)
+
+	if terminateCallbackEnabled {
+		if merchant.TerminateCallbackDelay > 0 {
+			time.Sleep(time.Duration(merchant.TerminateCallbackDelay) * time.Second)
+		}
+		callbackXML := serviceInfo.Callback.BuildContractCallbackXML(contract, merchant.MchID, terminateStatus, merchant.SignKey)
+		result, callbackErr := serviceInfo.Callback.DoXMLCallback(contract.NotifyURL, callbackXML)
+		if callbackErr != nil {
+			result = callbackErr.Error() + "; " + result
+		}
+		_ = serviceInfo.Deduct.UpdateContractRecordStatus(record.ID, terminateStatus, "", result)
+		_ = serviceInfo.Deduct.SetContractRecordCallbackResult(record.ID, result, time.Now().Unix())
+	}
 	c.Data(200, "application/xml; charset=utf-8", []byte(xmlResp))
 }
 
