@@ -262,30 +262,49 @@ def sign_flow(config: dict, out_contract_code: str | None = None, openid: str | 
     return result
 
 
-def wait_callback_flow(config: dict, out_contract_code: str) -> dict:
+def wait_callback_flow(config: dict, out_contract_code: str, callback_kind: str = 'contract') -> dict:
     timeout_seconds = int(config.get('poll_timeout_seconds', 60))
     deadline = time.time() + timeout_seconds
     interval = int(config.get('poll_interval_seconds', 2))
     latest = None
     attempt = 0
-    log_status('START', '开始等待回调', out_contract_code=out_contract_code, timeout_seconds=timeout_seconds, interval_seconds=interval)
-    while time.time() < deadline:
-        attempt += 1
-        log_status('WAITING', '轮询回调中', out_contract_code=out_contract_code, attempt=attempt)
-        latest = get_json(config['base_url'], config['callback_list_path'], {
+    callback_list_path = config['callback_list_path']
+    query_params = {
+        'page': 1,
+        'pageSize': 20,
+        'outContractCode': out_contract_code,
+    }
+    wait_message = '开始等待回调'
+    polling_message = '轮询回调中'
+    success_message = '已收到回调'
+    pending_message = '暂未收到回调，继续等待'
+    timeout_message = '等待回调超时'
+    if callback_kind == 'deduct':
+        callback_list_path = config.get('deduct_callback_list_path', config['callback_list_path'])
+        query_params = {
             'page': 1,
             'pageSize': 20,
-            'outContractCode': out_contract_code,
-        })
+            'outTradeNo': out_contract_code,
+        }
+        wait_message = '开始等待代扣回调'
+        polling_message = '轮询代扣回调中'
+        success_message = '已收到代扣回调'
+        pending_message = '暂未收到代扣回调，继续等待'
+        timeout_message = '等待代扣回调超时'
+    log_status('START', wait_message, out_contract_code=out_contract_code, timeout_seconds=timeout_seconds, interval_seconds=interval)
+    while time.time() < deadline:
+        attempt += 1
+        log_status('WAITING', polling_message, out_contract_code=out_contract_code, attempt=attempt)
+        latest = get_json(config['base_url'], callback_list_path, query_params)
         if latest.get('code') == 0:
             records = latest.get('data', {}).get('list', []) or []
             if records:
-                log_status('SUCCESS', '已收到回调', out_contract_code=out_contract_code, attempt=attempt, record_count=len(records))
+                log_status('SUCCESS', success_message, out_contract_code=out_contract_code, attempt=attempt, record_count=len(records))
                 return latest
         remaining_seconds = max(0, int(deadline - time.time()))
-        log_status('WAITING', '暂未收到回调，继续等待', out_contract_code=out_contract_code, attempt=attempt, remaining_seconds=remaining_seconds)
+        log_status('WAITING', pending_message, out_contract_code=out_contract_code, attempt=attempt, remaining_seconds=remaining_seconds)
         time.sleep(interval)
-    log_status('FAILED', '等待回调超时', out_contract_code=out_contract_code, timeout_seconds=timeout_seconds)
+    log_status('FAILED', timeout_message, out_contract_code=out_contract_code, timeout_seconds=timeout_seconds)
     raise TimeoutError(f'callback not received in {timeout_seconds} seconds')
 
 
@@ -653,6 +672,7 @@ def main() -> int:
 
     wait_cmd = sub.add_parser('wait-callback', help='poll callback records')
     wait_cmd.add_argument('--out-contract-code', required=True)
+    wait_cmd.add_argument('--kind', choices=['contract', 'deduct'], default='contract', help='callback record type to poll')
 
     query_cmd = sub.add_parser('query', help='query contract status')
     query_cmd.add_argument('--contract-id', required=True)
@@ -680,7 +700,7 @@ def main() -> int:
     if command == 'sign':
         result = sign_flow(config, args.out_contract_code or None, args.openid or None)
     elif command == 'wait-callback':
-        result = wait_callback_flow(config, args.out_contract_code)
+        result = wait_callback_flow(config, args.out_contract_code, args.kind)
     elif command == 'query':
         result = query_flow(config, args.contract_id, args.out_contract_code)
     elif command == 'deduct':

@@ -12,6 +12,8 @@
   "sign_type": "MD5",
   "sign_key": "O2TBTYjOXBKFfpj",
   "notify_url": "http://127.0.0.1:18888/papay/notify",
+  "deduct_notify_url": "http://127.0.0.1:18888/pay/pappaynotify",
+  "deduct_callback_list_path": "/mockSubscribeDeductCallback/getDeductCallbackRecordList",
   "contract_display_account": "KK星球",
   "fee_type": "CNY",
   "total_amount": 100,
