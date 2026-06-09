@@ -209,6 +209,21 @@ type ContractCallbackRequest struct {
 	Sign               string `xml:"sign"`
 }
 
+// ContractResultNotify 签约结果通知(XML)
+type ContractResultNotify struct {
+	XMLName      struct{} `xml:"xml"`
+	ReturnCode   string   `xml:"return_code"`
+	ResultCode   string   `xml:"result_code"`
+	Sign         string   `xml:"sign"`
+	MchID        string   `xml:"mch_id"`
+	ContractCode string   `xml:"contract_code"`
+	OpenID       string   `xml:"openid"`
+	PlanID       string   `xml:"plan_id"`
+	ChangeType   string   `xml:"change_type"`
+	OperateTime  string   `xml:"operate_time"`
+	ContractID   string   `xml:"contract_id"`
+}
+
 // GenericACK 通用成功/失败ACK
 type GenericACK struct {
 	ReturnCode string `xml:"return_code"`

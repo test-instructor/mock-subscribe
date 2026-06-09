@@ -13,6 +13,13 @@ from pathlib import Path
 import requests
 
 
+SUCCESS_RETURN_CODE = 'SUCCESS'
+SUCCESS_RESULT_CODE = 'SUCCESS'
+ACTIVE_CONTRACT_STATUS = 'ACTIVE'
+SUCCESS_TRADE_STATE = 'SUCCESS'
+FAILED_TRADE_STATE = 'FAILED'
+
+
 def log_status(status: str, message: str, **fields) -> None:
     timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     extras = ' '.join(f'{key}={json.dumps(value, ensure_ascii=False)}' for key, value in fields.items())
@@ -88,6 +95,10 @@ def get_json(base_url: str, path: str, params: dict) -> dict:
     return resp.json()
 
 
+def is_xml_api_success(resp_data: dict) -> bool:
+    return resp_data.get('return_code') == SUCCESS_RETURN_CODE and resp_data.get('result_code') == SUCCESS_RESULT_CODE
+
+
 def make_sign_request(config: dict, out_contract_code: str, openid: str) -> dict:
     payload = {
         'appid': config['app_id'],
@@ -100,13 +111,13 @@ def make_sign_request(config: dict, out_contract_code: str, openid: str) -> dict
         'sign_type': config['sign_type'],
         'version': '1.0',
         'timestamp': str(int(time.time())),
-        'nonce': random_nonce()
+        'nonce': random_nonce(),
     }
     payload['sign'] = build_sign(payload, config['sign_key'])
     return payload
 
 
-def make_query_request(config: dict, contract_id: str, out_contract_code: str) -> dict:
+def make_contract_query_request(config: dict, contract_id: str, out_contract_code: str) -> dict:
     payload = {
         'appid': config['app_id'],
         'mch_id': config['mch_id'],
@@ -114,7 +125,39 @@ def make_query_request(config: dict, contract_id: str, out_contract_code: str) -
         'out_contract_code': out_contract_code,
         'sign_type': config['sign_type'],
         'timestamp': str(int(time.time())),
-        'nonce': random_nonce()
+        'nonce': random_nonce(),
+    }
+    payload['sign'] = build_sign(payload, config['sign_key'])
+    return payload
+
+
+def make_deduct_apply_request(config: dict, contract_id: str, out_trade_no: str, total_amount: int, transaction_id: str = '') -> dict:
+    payload = {
+        'appid': config['app_id'],
+        'mch_id': config['mch_id'],
+        'out_trade_no': out_trade_no,
+        'contract_id': contract_id,
+        'transaction_id': transaction_id,
+        'total_amount': total_amount,
+        'fee_type': config.get('fee_type', 'CNY'),
+        'notify_url': config['notify_url'],
+        'sign_type': config['sign_type'],
+        'timestamp': str(int(time.time())),
+        'nonce': random_nonce(),
+    }
+    payload['sign'] = build_sign(payload, config['sign_key'])
+    return payload
+
+
+def make_order_query_request(config: dict, out_trade_no: str, transaction_id: str) -> dict:
+    payload = {
+        'appid': config['app_id'],
+        'mch_id': config['mch_id'],
+        'out_trade_no': out_trade_no,
+        'transaction_id': transaction_id,
+        'sign_type': config['sign_type'],
+        'timestamp': str(int(time.time())),
+        'nonce': random_nonce(),
     }
     payload['sign'] = build_sign(payload, config['sign_key'])
     return payload
@@ -137,9 +180,17 @@ def sign_flow(config: dict, out_contract_code: str | None = None, openid: str | 
         'response_sign_valid': sign_valid,
         'out_contract_code': actual_out_contract_code,
         'openid': actual_openid,
-        'contract_id': resp_data.get('contract_id', '')
+        'contract_id': resp_data.get('contract_id', ''),
     }
-    log_status('SUCCESS', '签约请求完成', out_contract_code=actual_out_contract_code, contract_id=result['contract_id'], return_code=resp_data.get('return_code', ''), result_code=resp_data.get('result_code', ''), response_sign_valid=sign_valid)
+    log_status(
+        'SUCCESS' if is_xml_api_success(resp_data) else 'FAILED',
+        '签约请求完成',
+        out_contract_code=actual_out_contract_code,
+        contract_id=result['contract_id'],
+        return_code=resp_data.get('return_code', ''),
+        result_code=resp_data.get('result_code', ''),
+        response_sign_valid=sign_valid,
+    )
     return result
 
 
@@ -156,7 +207,7 @@ def wait_callback_flow(config: dict, out_contract_code: str) -> dict:
         latest = get_json(config['base_url'], config['callback_list_path'], {
             'page': 1,
             'pageSize': 20,
-            'outContractCode': out_contract_code
+            'outContractCode': out_contract_code,
         })
         if latest.get('code') == 0:
             records = latest.get('data', {}).get('list', []) or []
@@ -172,7 +223,7 @@ def wait_callback_flow(config: dict, out_contract_code: str) -> dict:
 
 def query_flow(config: dict, contract_id: str, out_contract_code: str) -> dict:
     log_status('START', '开始查询签约状态', contract_id=contract_id, out_contract_code=out_contract_code)
-    req = make_query_request(config, contract_id, out_contract_code)
+    req = make_contract_query_request(config, contract_id, out_contract_code)
     xml_payload = dict_to_xml(req)
     resp_xml = post_xml(config['base_url'], config['query_path'], xml_payload)
     resp_data = xml_to_dict(resp_xml)
@@ -182,22 +233,142 @@ def query_flow(config: dict, contract_id: str, out_contract_code: str) -> dict:
         'request_xml': xml_payload,
         'response_xml': resp_xml,
         'response': resp_data,
-        'response_sign_valid': sign_valid
+        'response_sign_valid': sign_valid,
+        'contract_id': resp_data.get('contract_id', contract_id),
+        'out_contract_code': out_contract_code,
+        'contract_status': resp_data.get('contract_status', ''),
     }
-    log_status('SUCCESS', '签约状态查询完成', contract_id=contract_id, out_contract_code=out_contract_code, contract_status=resp_data.get('contract_status', ''), return_code=resp_data.get('return_code', ''), result_code=resp_data.get('result_code', ''), response_sign_valid=sign_valid)
+    log_status(
+        'SUCCESS' if is_xml_api_success(resp_data) else 'FAILED',
+        '签约状态查询完成',
+        contract_id=result['contract_id'],
+        out_contract_code=out_contract_code,
+        contract_status=result['contract_status'],
+        return_code=resp_data.get('return_code', ''),
+        result_code=resp_data.get('result_code', ''),
+        response_sign_valid=sign_valid,
+    )
     return result
 
 
-def e2e_flow(config: dict) -> dict:
-    log_status('START', '开始执行完整流程')
+def apply_deduct_flow(config: dict, contract_id: str, total_amount: int, out_trade_no: str | None = None, transaction_id: str = '') -> dict:
+    actual_out_trade_no = out_trade_no or f"{config.get('out_trade_no_prefix', 'MOCK-ORDER')}-{uuid.uuid4().hex[:12]}"
+    log_status('START', '开始申请扣款', contract_id=contract_id, out_trade_no=actual_out_trade_no, total_amount=total_amount)
+    req = make_deduct_apply_request(config, contract_id, actual_out_trade_no, total_amount, transaction_id)
+    xml_payload = dict_to_xml(req)
+    resp_xml = post_xml(config['base_url'], config['deduct_apply_path'], xml_payload)
+    resp_data = xml_to_dict(resp_xml)
+    sign_valid = verify_sign(resp_data, config['sign_key']) if resp_data.get('sign') else None
+    result = {
+        'request': req,
+        'request_xml': xml_payload,
+        'response_xml': resp_xml,
+        'response': resp_data,
+        'response_sign_valid': sign_valid,
+        'out_trade_no': actual_out_trade_no,
+        'transaction_id': resp_data.get('transaction_id', transaction_id),
+        'deduct_status': SUCCESS_TRADE_STATE if is_xml_api_success(resp_data) else FAILED_TRADE_STATE,
+    }
+    log_status(
+        'SUCCESS' if is_xml_api_success(resp_data) else 'FAILED',
+        '申请扣款完成',
+        contract_id=contract_id,
+        out_trade_no=actual_out_trade_no,
+        transaction_id=result['transaction_id'],
+        deduct_status=result['deduct_status'],
+        return_code=resp_data.get('return_code', ''),
+        result_code=resp_data.get('result_code', ''),
+        response_sign_valid=sign_valid,
+    )
+    return result
+
+
+def query_order_flow(config: dict, out_trade_no: str, transaction_id: str = '') -> dict:
+    log_status('START', '开始查询订单', out_trade_no=out_trade_no, transaction_id=transaction_id)
+    req = make_order_query_request(config, out_trade_no, transaction_id)
+    xml_payload = dict_to_xml(req)
+    resp_xml = post_xml(config['base_url'], config['query_order_path'], xml_payload)
+    resp_data = xml_to_dict(resp_xml)
+    sign_valid = verify_sign(resp_data, config['sign_key']) if resp_data.get('sign') else None
+    trade_state = resp_data.get('trade_state', '')
+    result = {
+        'request': req,
+        'request_xml': xml_payload,
+        'response_xml': resp_xml,
+        'response': resp_data,
+        'response_sign_valid': sign_valid,
+        'out_trade_no': resp_data.get('out_trade_no', out_trade_no),
+        'transaction_id': resp_data.get('transaction_id', transaction_id),
+        'trade_state': trade_state,
+    }
+    log_status(
+        'SUCCESS' if is_xml_api_success(resp_data) else 'FAILED',
+        '订单查询完成',
+        out_trade_no=result['out_trade_no'],
+        transaction_id=result['transaction_id'],
+        trade_state=trade_state,
+        return_code=resp_data.get('return_code', ''),
+        result_code=resp_data.get('result_code', ''),
+        response_sign_valid=sign_valid,
+    )
+    if trade_state in {SUCCESS_TRADE_STATE, FAILED_TRADE_STATE}:
+        log_status('SUCCESS' if trade_state == SUCCESS_TRADE_STATE else 'FAILED', '订单状态已落定', out_trade_no=result['out_trade_no'], transaction_id=result['transaction_id'], trade_state=trade_state)
+    return result
+
+
+def deduct_after_query_flow(config: dict, contract_id: str, out_contract_code: str, total_amount: int, out_trade_no: str | None = None) -> dict:
+    log_status('START', '开始执行查约后扣款流程', contract_id=contract_id, out_contract_code=out_contract_code, total_amount=total_amount)
+    query_result = query_flow(config, contract_id, out_contract_code)
+    query_response = query_result['response']
+    if not is_xml_api_success(query_response):
+        log_status('FAILED', '签约查询失败，终止扣款流程', contract_id=contract_id, out_contract_code=out_contract_code)
+        return {
+            'query': query_result,
+            'deduct': None,
+            'order': None,
+        }
+
+    contract_status = query_response.get('contract_status', '')
+    if contract_status != ACTIVE_CONTRACT_STATUS:
+        log_status('FAILED', '签约状态不是已签约，终止扣款流程', contract_id=contract_id, out_contract_code=out_contract_code, contract_status=contract_status)
+        return {
+            'query': query_result,
+            'deduct': None,
+            'order': None,
+        }
+
+    log_status('SUCCESS', '签约状态为已签约，开始申请扣款', contract_id=contract_id, out_contract_code=out_contract_code, contract_status=contract_status)
+    deduct_result = apply_deduct_flow(config, query_result['contract_id'], total_amount, out_trade_no=out_trade_no)
+    deduct_response = deduct_result['response']
+    if not is_xml_api_success(deduct_response):
+        log_status('FAILED', '扣款请求失败，不再查询订单', contract_id=contract_id, out_trade_no=deduct_result['out_trade_no'])
+        return {
+            'query': query_result,
+            'deduct': deduct_result,
+            'order': None,
+        }
+
+    order_result = query_order_flow(config, deduct_result['out_trade_no'], deduct_result['transaction_id'])
+    return {
+        'query': query_result,
+        'deduct': deduct_result,
+        'order': order_result,
+    }
+
+
+def e2e_flow(config: dict, total_amount: int | None = None) -> dict:
+    amount = total_amount if total_amount is not None else int(config.get('total_amount', 100))
+    log_status('START', '开始执行完整流程', total_amount=amount)
     sign_result = sign_flow(config)
     callback_result = wait_callback_flow(config, sign_result['out_contract_code'])
-    query_result = query_flow(config, sign_result['contract_id'], sign_result['out_contract_code'])
+    flow_result = deduct_after_query_flow(config, sign_result['contract_id'], sign_result['out_contract_code'], amount)
     log_status('SUCCESS', '完整流程执行完成', out_contract_code=sign_result['out_contract_code'], contract_id=sign_result['contract_id'])
     return {
         'sign': sign_result,
         'callback': callback_result,
-        'query': query_result
+        'query': flow_result['query'],
+        'deduct': flow_result['deduct'],
+        'order': flow_result['order'],
     }
 
 
@@ -217,7 +388,18 @@ def main() -> int:
     query_cmd.add_argument('--contract-id', required=True)
     query_cmd.add_argument('--out-contract-code', required=True)
 
-    sub.add_parser('e2e', help='run sign -> wait-callback -> query')
+    deduct_cmd = sub.add_parser('deduct', help='apply deduct after contract active check')
+    deduct_cmd.add_argument('--contract-id', required=True)
+    deduct_cmd.add_argument('--out-contract-code', required=True)
+    deduct_cmd.add_argument('--total-amount', type=int, required=True)
+    deduct_cmd.add_argument('--out-trade-no', default='')
+
+    order_cmd = sub.add_parser('query-order', help='query deduct order')
+    order_cmd.add_argument('--out-trade-no', required=True)
+    order_cmd.add_argument('--transaction-id', default='')
+
+    e2e_cmd = sub.add_parser('e2e', help='run sign -> wait-callback -> query -> deduct -> query-order')
+    e2e_cmd.add_argument('--total-amount', type=int, default=0)
 
     args = parser.parse_args()
     config = load_config(args.config)
@@ -230,8 +412,13 @@ def main() -> int:
         result = wait_callback_flow(config, args.out_contract_code)
     elif command == 'query':
         result = query_flow(config, args.contract_id, args.out_contract_code)
+    elif command == 'deduct':
+        result = deduct_after_query_flow(config, args.contract_id, args.out_contract_code, args.total_amount, args.out_trade_no or None)
+    elif command == 'query-order':
+        result = query_order_flow(config, args.out_trade_no, args.transaction_id)
     else:
-        result = e2e_flow(config)
+        total_amount = getattr(args, 'total_amount', 0) or None
+        result = e2e_flow(config, total_amount)
 
     log_status('SUCCESS', '脚本执行完成', command=command)
     print(json.dumps(result, ensure_ascii=False, indent=2))

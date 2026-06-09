@@ -2,7 +2,6 @@ package service
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -34,13 +33,44 @@ func (s *callback) DoXMLCallback(url string, body string) (string, error) {
 		return "", err
 	}
 	if resp.StatusCode >= 400 {
-		return string(respBody), errors.New(fmt.Sprintf("回调失败，状态码: %d", resp.StatusCode))
+		return string(respBody), fmt.Errorf("回调失败，状态码: %d", resp.StatusCode)
 	}
 	return string(respBody), nil
 }
 
-func (s *callback) BuildContractCallbackXML(contract model.Contract, status string) string {
-	return fmt.Sprintf("<xml><contract_id>%s</contract_id><out_contract_code>%s</out_contract_code><contract_status>%s</contract_status></xml>", contract.ContractID, contract.OutContractID, status)
+func (s *callback) BuildContractCallbackXML(contract model.Contract, mchID string, status string, signKey string) string {
+	changeType := "MODIFY"
+	if status == model.ContractStatusActive {
+		changeType = "ADD"
+	}
+	if status == model.ContractStatusTerminated {
+		changeType = "DELETE"
+	}
+	operateTime := time.Now().Format("2006-01-02 15:04:05")
+	notify := model.ContractResultNotify{
+		ReturnCode:   model.ErrCodeSuccess,
+		ResultCode:   model.ErrCodeSuccess,
+		MchID:        mchID,
+		ContractCode: contract.OutContractID,
+		OpenID:       contract.OpenID,
+		PlanID:       contract.PlanID,
+		ChangeType:   changeType,
+		OperateTime:  operateTime,
+		ContractID:   contract.ContractID,
+	}
+	notify.Sign = Service.Signature.Sign(map[string]string{
+		"return_code":   notify.ReturnCode,
+		"result_code":   notify.ResultCode,
+		"mch_id":        notify.MchID,
+		"contract_code": notify.ContractCode,
+		"openid":        notify.OpenID,
+		"plan_id":       notify.PlanID,
+		"change_type":   notify.ChangeType,
+		"operate_time":  notify.OperateTime,
+		"contract_id":   notify.ContractID,
+	}, signKey)
+	xml, _ := Service.XMLCodec.Marshal(notify)
+	return xml
 }
 
 func (s *callback) BuildDeductCallbackXML(record model.DeductRecord) string {

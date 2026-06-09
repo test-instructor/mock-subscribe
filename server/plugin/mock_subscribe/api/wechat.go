@@ -132,7 +132,7 @@ func (a *wechat) ContractSign(c *gin.Context) {
 		}
 		contract.ContractID = contractID
 		contract.SignSerialNo = signSerialNo
-		callbackXML := serviceInfo.Callback.BuildContractCallbackXML(contract, merchant.SignTargetStatus)
+		callbackXML := serviceInfo.Callback.BuildContractCallbackXML(contract, merchant.MchID, merchant.SignTargetStatus, merchant.SignKey)
 		result, callbackErr := serviceInfo.Callback.DoXMLCallback(req.NotifyURL, callbackXML)
 		callbackTime := time.Now().Unix()
 		if callbackErr != nil {
@@ -169,7 +169,8 @@ func (a *wechat) QueryContract(c *gin.Context) {
 		c.Data(200, "application/xml; charset=utf-8", []byte(xml))
 		return
 	}
-	contract, err := serviceInfo.Deduct.GetContractFromDB(req.OutContractCode)
+	var contract model.Contract
+	contract, err = serviceInfo.Deduct.GetContractFromDB(req.OutContractCode)
 	if err != nil && req.ContractID != "" {
 		contract, err = serviceInfo.Deduct.GetContractByContractIDFromDB(req.ContractID)
 	}
@@ -238,7 +239,7 @@ func (a *wechat) TerminateContract(c *gin.Context) {
 	xmlResp, _ := serviceInfo.XMLCodec.Marshal(resp)
 	_ = serviceInfo.Deduct.UpdateContractRecordResponse(record.ID, xmlResp, model.ContractStatusTerminated)
 	if merchant.TerminateNotifyEnabled && strings.TrimSpace(contract.NotifyURL) != "" {
-		callbackXML := serviceInfo.Callback.BuildContractCallbackXML(contract, model.ContractStatusTerminated)
+		callbackXML := serviceInfo.Callback.BuildContractCallbackXML(contract, merchant.MchID, model.ContractStatusTerminated, merchant.SignKey)
 		result, callbackErr := serviceInfo.Callback.DoXMLCallback(contract.NotifyURL, callbackXML)
 		if callbackErr != nil {
 			result = callbackErr.Error() + "; " + result
