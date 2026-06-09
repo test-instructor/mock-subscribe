@@ -5,10 +5,9 @@ import "github.com/gin-gonic/gin"
 type callback struct{}
 
 func (r *callback) Init(public *gin.RouterGroup, private *gin.RouterGroup) {
-	publicGroup := public.Group("mockSubscribeCallback")
-	publicGroup.POST("receiveContract", apiInfo.Callback.ReceiveContract)
+	_ = private
 
-	privateGroup := private.Group("mockSubscribeCallback")
-	privateGroup.GET("getCallbackRecordList", apiInfo.Callback.GetCallbackRecordList)
-	privateGroup.GET("findCallbackRecord", apiInfo.Callback.FindCallbackRecord)
+	public.POST("papay/notify", apiInfo.Callback.ReceiveContract)
+	public.GET("papay/callback-records", apiInfo.Callback.GetCallbackRecordList)
+	public.GET("papay/callback-record", apiInfo.Callback.FindCallbackRecord)
 }

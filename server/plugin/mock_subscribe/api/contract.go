@@ -44,7 +44,12 @@ func (a *contract) FindContract(c *gin.Context) {
 		response.FailWithMessage("获取用户协议详情失败: "+err.Error(), c)
 		return
 	}
-	response.OkWithData(info, c)
+	status, statusErr := serviceInfo.Contract.GetContractStatusByContractID(info.ID)
+	if statusErr != nil {
+		response.OkWithData(gin.H{"contract": info}, c)
+		return
+	}
+	response.OkWithData(gin.H{"contract": info, "status": status}, c)
 }
 
 func (a *contract) UpdateContractStatus(c *gin.Context) {

@@ -14,6 +14,7 @@ func Gorm(ctx context.Context) {
 	err := global.GVA_DB.WithContext(ctx).AutoMigrate(
 		new(model.Merchant),
 		new(model.Contract),
+		new(model.ContractStatusRecord),
 		new(model.ContractRecord),
 		new(model.DeductRecord),
 		new(model.CallbackRecord),

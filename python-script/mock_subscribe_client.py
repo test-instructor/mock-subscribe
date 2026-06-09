@@ -7,9 +7,19 @@ import sys
 import time
 import uuid
 import xml.etree.ElementTree as ET
+from datetime import datetime
 from pathlib import Path
 
 import requests
+
+
+def log_status(status: str, message: str, **fields) -> None:
+    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    extras = ' '.join(f'{key}={json.dumps(value, ensure_ascii=False)}' for key, value in fields.items())
+    line = f'[{timestamp}] [{status}] {message}'
+    if extras:
+        line = f'{line} | {extras}'
+    print(line, flush=True)
 
 
 def load_config(config_path: str) -> dict:
@@ -31,6 +41,14 @@ def build_sign(params: dict, sign_key: str) -> str:
     return hashlib.md5(raw.encode('utf-8')).hexdigest().upper()
 
 
+def verify_sign(params: dict, sign_key: str) -> bool:
+    actual_sign = (params.get('sign') or '').strip().upper()
+    if not actual_sign:
+        return False
+    expected_sign = build_sign(params, sign_key)
+    return expected_sign == actual_sign
+
+
 def dict_to_xml(data: dict) -> str:
     root = ET.Element('xml')
     for key, value in data.items():
@@ -45,14 +63,28 @@ def xml_to_dict(xml_text: str) -> dict:
 
 
 def post_xml(base_url: str, path: str, payload: str) -> str:
-    resp = requests.post(f"{base_url.rstrip('/')}{path}", data=payload.encode('utf-8'), headers={'Content-Type': 'application/xml'}, timeout=60)
-    resp.raise_for_status()
+    url = f"{base_url.rstrip('/')}{path}"
+    log_status('START', '发起 XML 请求', method='POST', url=url)
+    try:
+        resp = requests.post(url, data=payload.encode('utf-8'), headers={'Content-Type': 'application/xml'}, timeout=60)
+        resp.raise_for_status()
+    except Exception as exc:
+        log_status('FAILED', 'XML 请求失败', method='POST', url=url, error=str(exc))
+        raise
+    log_status('SUCCESS', 'XML 请求成功', method='POST', url=url, status_code=resp.status_code)
     return resp.text
 
 
 def get_json(base_url: str, path: str, params: dict) -> dict:
-    resp = requests.get(f"{base_url.rstrip('/')}{path}", params=params, timeout=60)
-    resp.raise_for_status()
+    url = f"{base_url.rstrip('/')}{path}"
+    log_status('START', '发起 JSON 请求', method='GET', url=url, params=params)
+    try:
+        resp = requests.get(url, params=params, timeout=60)
+        resp.raise_for_status()
+    except Exception as exc:
+        log_status('FAILED', 'JSON 请求失败', method='GET', url=url, error=str(exc))
+        raise
+    log_status('SUCCESS', 'JSON 请求成功', method='GET', url=url, status_code=resp.status_code)
     return resp.json()
 
 
@@ -91,27 +123,36 @@ def make_query_request(config: dict, contract_id: str, out_contract_code: str) -
 def sign_flow(config: dict, out_contract_code: str | None = None, openid: str | None = None) -> dict:
     actual_out_contract_code = out_contract_code or f"{config['out_contract_code_prefix']}-{uuid.uuid4().hex[:12]}"
     actual_openid = openid or f"{config['openid_prefix']}_{uuid.uuid4().hex[:10]}"
+    log_status('START', '开始签约请求', out_contract_code=actual_out_contract_code, openid=actual_openid)
     req = make_sign_request(config, actual_out_contract_code, actual_openid)
     xml_payload = dict_to_xml(req)
     resp_xml = post_xml(config['base_url'], config['sign_path'], xml_payload)
     resp_data = xml_to_dict(resp_xml)
+    sign_valid = verify_sign(resp_data, config['sign_key']) if resp_data.get('sign') else None
     result = {
         'request': req,
         'request_xml': xml_payload,
         'response_xml': resp_xml,
         'response': resp_data,
+        'response_sign_valid': sign_valid,
         'out_contract_code': actual_out_contract_code,
         'openid': actual_openid,
         'contract_id': resp_data.get('contract_id', '')
     }
+    log_status('SUCCESS', '签约请求完成', out_contract_code=actual_out_contract_code, contract_id=result['contract_id'], return_code=resp_data.get('return_code', ''), result_code=resp_data.get('result_code', ''), response_sign_valid=sign_valid)
     return result
 
 
 def wait_callback_flow(config: dict, out_contract_code: str) -> dict:
-    deadline = time.time() + int(config.get('poll_timeout_seconds', 60))
+    timeout_seconds = int(config.get('poll_timeout_seconds', 60))
+    deadline = time.time() + timeout_seconds
     interval = int(config.get('poll_interval_seconds', 2))
     latest = None
+    attempt = 0
+    log_status('START', '开始等待回调', out_contract_code=out_contract_code, timeout_seconds=timeout_seconds, interval_seconds=interval)
     while time.time() < deadline:
+        attempt += 1
+        log_status('WAITING', '轮询回调中', out_contract_code=out_contract_code, attempt=attempt)
         latest = get_json(config['base_url'], config['callback_list_path'], {
             'page': 1,
             'pageSize': 20,
@@ -120,27 +161,39 @@ def wait_callback_flow(config: dict, out_contract_code: str) -> dict:
         if latest.get('code') == 0:
             records = latest.get('data', {}).get('list', []) or []
             if records:
+                log_status('SUCCESS', '已收到回调', out_contract_code=out_contract_code, attempt=attempt, record_count=len(records))
                 return latest
+        remaining_seconds = max(0, int(deadline - time.time()))
+        log_status('WAITING', '暂未收到回调，继续等待', out_contract_code=out_contract_code, attempt=attempt, remaining_seconds=remaining_seconds)
         time.sleep(interval)
-    raise TimeoutError(f'callback not received in {config.get("poll_timeout_seconds", 60)} seconds')
+    log_status('FAILED', '等待回调超时', out_contract_code=out_contract_code, timeout_seconds=timeout_seconds)
+    raise TimeoutError(f'callback not received in {timeout_seconds} seconds')
 
 
 def query_flow(config: dict, contract_id: str, out_contract_code: str) -> dict:
+    log_status('START', '开始查询签约状态', contract_id=contract_id, out_contract_code=out_contract_code)
     req = make_query_request(config, contract_id, out_contract_code)
     xml_payload = dict_to_xml(req)
     resp_xml = post_xml(config['base_url'], config['query_path'], xml_payload)
-    return {
+    resp_data = xml_to_dict(resp_xml)
+    sign_valid = verify_sign(resp_data, config['sign_key']) if resp_data.get('sign') else None
+    result = {
         'request': req,
         'request_xml': xml_payload,
         'response_xml': resp_xml,
-        'response': xml_to_dict(resp_xml)
+        'response': resp_data,
+        'response_sign_valid': sign_valid
     }
+    log_status('SUCCESS', '签约状态查询完成', contract_id=contract_id, out_contract_code=out_contract_code, contract_status=resp_data.get('contract_status', ''), return_code=resp_data.get('return_code', ''), result_code=resp_data.get('result_code', ''), response_sign_valid=sign_valid)
+    return result
 
 
 def e2e_flow(config: dict) -> dict:
+    log_status('START', '开始执行完整流程')
     sign_result = sign_flow(config)
     callback_result = wait_callback_flow(config, sign_result['out_contract_code'])
     query_result = query_flow(config, sign_result['contract_id'], sign_result['out_contract_code'])
+    log_status('SUCCESS', '完整流程执行完成', out_contract_code=sign_result['out_contract_code'], contract_id=sign_result['contract_id'])
     return {
         'sign': sign_result,
         'callback': callback_result,
@@ -169,6 +222,7 @@ def main() -> int:
     args = parser.parse_args()
     config = load_config(args.config)
     command = args.command or 'e2e'
+    log_status('START', '脚本开始执行', command=command, config=args.config)
 
     if command == 'sign':
         result = sign_flow(config, args.out_contract_code or None, args.openid or None)
@@ -179,6 +233,7 @@ def main() -> int:
     else:
         result = e2e_flow(config)
 
+    log_status('SUCCESS', '脚本执行完成', command=command)
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0
 
@@ -187,5 +242,6 @@ if __name__ == '__main__':
     try:
         raise SystemExit(main())
     except Exception as exc:
+        log_status('FAILED', '脚本执行失败', error=str(exc))
         print(json.dumps({'error': str(exc)}, ensure_ascii=False, indent=2), file=sys.stderr)
         raise

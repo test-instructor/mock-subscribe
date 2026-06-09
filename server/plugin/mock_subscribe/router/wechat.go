@@ -6,21 +6,11 @@ type wechat struct{}
 
 func (r *wechat) Init(public *gin.RouterGroup, private *gin.RouterGroup) {
 	_ = private
-	group := public.Group("mockSubscribeWechat")
-	group.POST("contractSign", apiInfo.Wechat.ContractSign)
-	group.POST("queryContract", apiInfo.Wechat.QueryContract)
-	group.POST("terminateContract", apiInfo.Wechat.TerminateContract)
-	group.POST("applyDeduct", apiInfo.Wechat.ApplyDeduct)
-	group.POST("queryDeduct", apiInfo.Wechat.QueryDeduct)
-	group.POST("preDeductNotify", apiInfo.Wechat.PreDeductNotify)
 
-	contractPublicGroup := public.Group("mockSubscribeContract")
-	contractPublicGroup.POST("appPureSign", apiInfo.Wechat.ContractSign)
-	contractPublicGroup.POST("queryContract", apiInfo.Wechat.QueryContract)
-	contractPublicGroup.POST("terminateContract", apiInfo.Wechat.TerminateContract)
-
-	deductPublicGroup := public.Group("mockSubscribeDeduct")
-	deductPublicGroup.POST("applyDeduct", apiInfo.Wechat.ApplyDeduct)
-	deductPublicGroup.POST("queryDeduct", apiInfo.Wechat.QueryDeduct)
-	deductPublicGroup.POST("preDeductNotify", apiInfo.Wechat.PreDeductNotify)
+	public.POST("papay/preentrustweb", apiInfo.Wechat.ContractSign)
+	public.POST("papay/querycontract", apiInfo.Wechat.QueryContract)
+	public.POST("papay/deletecontract", apiInfo.Wechat.TerminateContract)
+	public.POST("pay/pappayapply", apiInfo.Wechat.ApplyDeduct)
+	public.POST("transit/queryorder", apiInfo.Wechat.QueryDeduct)
+	public.POST("v3/papay/contracts/:contract_id/notify", apiInfo.Wechat.PreDeductNotify)
 }

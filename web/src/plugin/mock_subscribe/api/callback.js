@@ -2,7 +2,7 @@ import service from '@/utils/request'
 
 export const getCallbackRecordList = (params) => {
   return service({
-    url: '/mockSubscribeCallback/getCallbackRecordList',
+    url: '/papay/callback-records',
     method: 'get',
     params
   })
@@ -10,7 +10,7 @@ export const getCallbackRecordList = (params) => {
 
 export const findCallbackRecord = (params) => {
   return service({
-    url: '/mockSubscribeCallback/findCallbackRecord',
+    url: '/papay/callback-record',
     method: 'get',
     params
   })

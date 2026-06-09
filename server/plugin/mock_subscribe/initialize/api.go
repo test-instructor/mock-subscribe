@@ -24,16 +24,16 @@ func Api(ctx context.Context) {
 		{Path: "/mockSubscribeDeduct/getDeductRecordList", Description: "获取扣款记录列表", ApiGroup: "微信订阅Mock-扣款", Method: "GET"},
 		{Path: "/mockSubscribeDeduct/findDeductRecord", Description: "获取扣款记录详情", ApiGroup: "微信订阅Mock-扣款", Method: "GET"},
 
-		{Path: "/mockSubscribeCallback/receiveContract", Description: "接收签约回调", ApiGroup: "微信订阅Mock-回调", Method: "POST"},
-		{Path: "/mockSubscribeCallback/getCallbackRecordList", Description: "获取回调记录列表", ApiGroup: "微信订阅Mock-回调", Method: "GET"},
-		{Path: "/mockSubscribeCallback/findCallbackRecord", Description: "获取回调记录详情", ApiGroup: "微信订阅Mock-回调", Method: "GET"},
+		{Path: "/papay/notify", Description: "接收签约回调", ApiGroup: "微信订阅Mock-回调", Method: "POST"},
+		{Path: "/papay/callback-records", Description: "获取回调记录列表", ApiGroup: "微信订阅Mock-回调", Method: "GET"},
+		{Path: "/papay/callback-record", Description: "获取回调记录详情", ApiGroup: "微信订阅Mock-回调", Method: "GET"},
 
-		{Path: "/mockSubscribeWechat/contractSign", Description: "APP纯签约", ApiGroup: "微信订阅Mock-微信接口", Method: "POST"},
-		{Path: "/mockSubscribeWechat/queryContract", Description: "查询签约关系", ApiGroup: "微信订阅Mock-微信接口", Method: "POST"},
-		{Path: "/mockSubscribeWechat/terminateContract", Description: "申请解约", ApiGroup: "微信订阅Mock-微信接口", Method: "POST"},
-		{Path: "/mockSubscribeWechat/applyDeduct", Description: "申请扣款", ApiGroup: "微信订阅Mock-微信接口", Method: "POST"},
-		{Path: "/mockSubscribeWechat/queryDeduct", Description: "查询扣款结果", ApiGroup: "微信订阅Mock-微信接口", Method: "POST"},
-		{Path: "/mockSubscribeWechat/preDeductNotify", Description: "预扣费通知API", ApiGroup: "微信订阅Mock-微信接口", Method: "POST"},
+		{Path: "/papay/preentrustweb", Description: "APP纯签约", ApiGroup: "微信订阅Mock-微信接口", Method: "POST"},
+		{Path: "/papay/querycontract", Description: "查询签约关系", ApiGroup: "微信订阅Mock-微信接口", Method: "POST"},
+		{Path: "/papay/deletecontract", Description: "申请解约", ApiGroup: "微信订阅Mock-微信接口", Method: "POST"},
+		{Path: "/pay/pappayapply", Description: "申请扣款", ApiGroup: "微信订阅Mock-微信接口", Method: "POST"},
+		{Path: "/transit/queryorder", Description: "查询扣款结果", ApiGroup: "微信订阅Mock-微信接口", Method: "POST"},
+		{Path: "/v3/papay/contracts/:contract_id/notify", Description: "预扣费通知API", ApiGroup: "微信订阅Mock-微信接口", Method: "POST"},
 	}
 	utils.RegisterApis(entities...)
 }

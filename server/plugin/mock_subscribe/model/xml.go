@@ -6,7 +6,7 @@ package model
 type SignContractRequest struct {
 	AppID                  string `xml:"appid"`                    // 应用ID
 	MchID                  string `xml:"mch_id"`                   // 商户号
-	ContractAppID          string `xml:"plan_id"`                  // 签约模板ID
+	PlanID                 string `xml:"plan_id"`                  // 签约模板ID
 	OutContractCode        string `xml:"out_contract_code"`        // 用户侧签约协议号
 	OutUserID              string `xml:"outer_openid"`             // 用户OpenID
 	ContractDisplayAccount string `xml:"contract_display_account"` // 用户账户展示名称

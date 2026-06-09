@@ -36,9 +36,9 @@ func (a *wechat) ContractSign(c *gin.Context) {
 	}
 
 	params := map[string]string{
-		"appid": req.AppID, "mch_id": req.MchID, "plan_id": req.ContractAppID, "out_contract_code": req.OutContractCode,
+		"appid": req.AppID, "mch_id": req.MchID, "plan_id": req.PlanID, "out_contract_code": req.OutContractCode,
 		"outer_openid": req.OutUserID, "contract_display_account": req.ContractDisplayAccount, "notify_url": req.NotifyURL,
-		"sign_type": req.SignType, "timestamp": req.TimeStamp, "nonce": req.Nonce, "sign": req.Sign,
+		"sign_type": req.SignType, "version": req.Version, "timestamp": req.TimeStamp, "nonce": req.Nonce, "sign": req.Sign,
 	}
 	if err = serviceInfo.Signature.Verify(params, merchant.SignKey); err != nil {
 		resp := model.SignContractResponse{ReturnCode: model.ErrCodeFail, ReturnMsg: "签名校验失败", ResultCode: model.ErrCodeFail, ErrCode: model.ErrCodeInvalidSign, ErrCodeDes: err.Error()}
@@ -47,7 +47,7 @@ func (a *wechat) ContractSign(c *gin.Context) {
 		return
 	}
 
-	if serviceInfo.Contract.HasActiveContract(req.OutContractCode) {
+	if serviceInfo.Contract.HasActiveContract(req.OutContractCode) || serviceInfo.Contract.HasActiveContractByUser(merchant.ID, req.OutUserID, req.OutUserID) {
 		resp := model.SignContractResponse{ReturnCode: model.ErrCodeFail, ReturnMsg: "重复签约", ResultCode: model.ErrCodeFail, ErrCode: model.ErrCodeSignExists, ErrCodeDes: "已有有效签约关系"}
 		xml, _ := serviceInfo.XMLCodec.Marshal(resp)
 		c.Data(200, "application/xml; charset=utf-8", []byte(xml))
@@ -55,16 +55,21 @@ func (a *wechat) ContractSign(c *gin.Context) {
 	}
 
 	contract := model.Contract{
-		MerchantID:     merchant.ID,
-		OpenID:         req.OutUserID,
-		OutUserID:      req.OutUserID,
-		OutContractID:  req.OutContractCode,
-		PlanID:         req.ContractAppID,
-		NotifyURL:      req.NotifyURL,
-		ContractStatus: model.ContractStatusPending,
-		RequestData:    string(body),
+		MerchantID:    merchant.ID,
+		OpenID:        req.OutUserID,
+		OutUserID:     req.OutUserID,
+		OutContractID: req.OutContractCode,
+		PlanID:        req.PlanID,
+		NotifyURL:     req.NotifyURL,
+		RequestData:   string(body),
 	}
-	if err = serviceInfo.Contract.CreateContract(&contract); err != nil {
+	statusRecord := model.ContractStatusRecord{
+		MerchantID:     merchant.ID,
+		OutContractID:  req.OutContractCode,
+		ContractStatus: model.ContractStatusPending,
+		IsFirstDeduct:  true,
+	}
+	if err = serviceInfo.Contract.CreateContractWithStatus(&contract, &statusRecord); err != nil {
 		resp := model.SignContractResponse{ReturnCode: model.ErrCodeFail, ReturnMsg: "创建签约失败", ResultCode: model.ErrCodeFail, ErrCode: model.ErrCodeFail, ErrCodeDes: err.Error()}
 		xml, _ := serviceInfo.XMLCodec.Marshal(resp)
 		c.Data(200, "application/xml; charset=utf-8", []byte(xml))
@@ -126,6 +131,7 @@ func (a *wechat) ContractSign(c *gin.Context) {
 			time.Sleep(time.Duration(merchant.SignCallbackDelay) * time.Second)
 		}
 		contract.ContractID = contractID
+		contract.SignSerialNo = signSerialNo
 		callbackXML := serviceInfo.Callback.BuildContractCallbackXML(contract, merchant.SignTargetStatus)
 		result, callbackErr := serviceInfo.Callback.DoXMLCallback(req.NotifyURL, callbackXML)
 		callbackTime := time.Now().Unix()
@@ -173,10 +179,17 @@ func (a *wechat) QueryContract(c *gin.Context) {
 		c.Data(200, "application/xml; charset=utf-8", []byte(xml))
 		return
 	}
-	resp := model.QueryContractResponse{ReturnCode: model.ErrCodeSuccess, ReturnMsg: "OK", ResultCode: model.ErrCodeSuccess, ContractID: contract.ContractID, ContractStatus: contract.ContractStatus, ContractExt: contract.SignSerialNo, PlanID: contract.PlanID, SignStatus: contract.ContractStatus, SignType: req.SignType, TimeStamp: strconv.FormatInt(time.Now().Unix(), 10), Nonce: req.Nonce}
+	statusRecord, statusErr := serviceInfo.Contract.GetContractStatusByContractID(contract.ID)
+	if statusErr != nil {
+		resp := model.QueryContractResponse{ReturnCode: model.ErrCodeFail, ReturnMsg: "签约状态不存在", ResultCode: model.ErrCodeFail, ErrCode: model.ErrCodeSignNotFound, ErrCodeDes: "未找到签约状态"}
+		xml, _ := serviceInfo.XMLCodec.Marshal(resp)
+		c.Data(200, "application/xml; charset=utf-8", []byte(xml))
+		return
+	}
+	resp := model.QueryContractResponse{ReturnCode: model.ErrCodeSuccess, ReturnMsg: "OK", ResultCode: model.ErrCodeSuccess, ContractID: contract.ContractID, ContractStatus: statusRecord.ContractStatus, ContractExt: contract.SignSerialNo, PlanID: contract.PlanID, SignStatus: statusRecord.ContractStatus, SignType: req.SignType, TimeStamp: strconv.FormatInt(time.Now().Unix(), 10), Nonce: req.Nonce}
 	resp.Sign = serviceInfo.Signature.Sign(map[string]string{"return_code": resp.ReturnCode, "result_code": resp.ResultCode, "contract_id": resp.ContractID, "contract_status": resp.ContractStatus, "contract_ext": resp.ContractExt, "plan_id": resp.PlanID, "sign_status": resp.SignStatus, "sign_type": resp.SignType, "timestamp": resp.TimeStamp, "nonce": resp.Nonce}, merchant.SignKey)
 	xmlResp, _ := serviceInfo.XMLCodec.Marshal(resp)
-	record := model.ContractRecord{ContractID: contract.ID, MerchantID: merchant.ID, OperationType: "query", RequestXML: string(body), ResponseXML: xmlResp, Status: contract.ContractStatus}
+	record := model.ContractRecord{ContractID: contract.ID, MerchantID: merchant.ID, OperationType: "query", RequestXML: string(body), ResponseXML: xmlResp, Status: statusRecord.ContractStatus}
 	_ = serviceInfo.Deduct.CreateContractRecord(&record)
 	c.Data(200, "application/xml; charset=utf-8", []byte(xmlResp))
 }
@@ -267,14 +280,23 @@ func (a *wechat) ApplyDeduct(c *gin.Context) {
 		c.Data(200, "application/xml; charset=utf-8", []byte(xml))
 		return
 	}
-	if contract.ContractStatus != model.ContractStatusActive {
+	statusRecord, statusErr := serviceInfo.Contract.GetContractStatusByContractID(contract.ID)
+	if statusErr != nil {
+		record := model.DeductRecord{ContractID: contract.ID, MerchantID: merchant.ID, OperationType: "deduct", RequestData: string(body), CallbackURL: req.NotifyURL, OutTradeNo: req.OutTradeNo, TransactionID: req.TransactionID, Amount: req.TotalAmount, Status: model.DeductStatusFailed, IsFirstDeduct: false, PreNotifyCalled: false, ErrorCode: model.ErrCodeSignNotFound, ErrorMessage: "订阅状态不存在"}
+		_ = serviceInfo.Deduct.SaveDeductRecord(&record)
+		resp := model.DeductApplyResponse{ReturnCode: model.ErrCodeFail, ReturnMsg: "订阅信息不存在", ResultCode: model.ErrCodeFail, ErrCode: model.ErrCodeSignNotFound, ErrCodeDes: "未找到订阅状态"}
+		xml, _ := serviceInfo.XMLCodec.Marshal(resp)
+		c.Data(200, "application/xml; charset=utf-8", []byte(xml))
+		return
+	}
+	if statusRecord.ContractStatus != model.ContractStatusActive {
 		resp := model.DeductApplyResponse{ReturnCode: model.ErrCodeFail, ReturnMsg: "签约状态不可扣款", ResultCode: model.ErrCodeFail, ErrCode: model.ErrCodeDeductNotAllowed, ErrCodeDes: "签约未生效或已解约"}
 		xml, _ := serviceInfo.XMLCodec.Marshal(resp)
 		c.Data(200, "application/xml; charset=utf-8", []byte(xml))
 		return
 	}
-	isFirst := contract.IsFirstDeduct
-	if !isFirst && merchant.StrictDeductRule && !contract.PreNotifyCalled {
+	isFirst := statusRecord.IsFirstDeduct
+	if !isFirst && merchant.StrictDeductRule && !statusRecord.PreNotifyCalled {
 		record := model.DeductRecord{ContractID: contract.ID, MerchantID: merchant.ID, OperationType: "deduct", RequestData: string(body), CallbackURL: req.NotifyURL, OutTradeNo: req.OutTradeNo, TransactionID: req.TransactionID, Amount: req.TotalAmount, Status: model.DeductStatusFailed, IsFirstDeduct: false, PreNotifyCalled: false, ErrorCode: model.ErrCodePreNotifyRequired, ErrorMessage: "非首次扣款前必须先调用预扣费通知API"}
 		_ = serviceInfo.Deduct.SaveDeductRecord(&record)
 		resp := model.DeductApplyResponse{ReturnCode: model.ErrCodeFail, ReturnMsg: "未先调用预扣费通知", ResultCode: model.ErrCodeFail, ErrCode: model.ErrCodePreNotifyRequired, ErrCodeDes: "非首次扣款前必须先调用预扣费通知API"}
@@ -282,7 +304,7 @@ func (a *wechat) ApplyDeduct(c *gin.Context) {
 		c.Data(200, "application/xml; charset=utf-8", []byte(xml))
 		return
 	}
-	record := model.DeductRecord{ContractID: contract.ID, MerchantID: merchant.ID, OperationType: "deduct", RequestData: string(body), CallbackURL: req.NotifyURL, OutTradeNo: req.OutTradeNo, TransactionID: req.TransactionID, Amount: req.TotalAmount, Status: model.DeductStatusPending, IsFirstDeduct: isFirst, PreNotifyCalled: contract.PreNotifyCalled}
+	record := model.DeductRecord{ContractID: contract.ID, MerchantID: merchant.ID, OperationType: "deduct", RequestData: string(body), CallbackURL: req.NotifyURL, OutTradeNo: req.OutTradeNo, TransactionID: req.TransactionID, Amount: req.TotalAmount, Status: model.DeductStatusPending, IsFirstDeduct: isFirst, PreNotifyCalled: statusRecord.PreNotifyCalled}
 	_ = serviceInfo.Deduct.SaveDeductRecord(&record)
 	if merchant.DeductStatusDelay > 0 {
 		time.Sleep(time.Duration(merchant.DeductStatusDelay) * time.Second)
@@ -355,6 +377,9 @@ func (a *wechat) PreDeductNotify(c *gin.Context) {
 		c.JSON(200, model.PreDeductNotifyResponse{ReturnCode: model.ErrCodeFail, ReturnMsg: err.Error(), ResultCode: model.ErrCodeFail, ErrCode: model.ErrCodeInvalidParams, ErrCodeDes: err.Error()})
 		return
 	}
+	if req.ContractID == "" {
+		req.ContractID = c.Param("contract_id")
+	}
 	merchant, err := serviceInfo.Merchant.GetMerchantByMchID(req.MchID)
 	if err != nil {
 		c.JSON(200, model.PreDeductNotifyResponse{ReturnCode: model.ErrCodeFail, ReturnMsg: "商户不存在", ResultCode: model.ErrCodeFail, ErrCode: model.ErrCodeInvalidParams, ErrCodeDes: "商户配置不存在"})
@@ -368,6 +393,10 @@ func (a *wechat) PreDeductNotify(c *gin.Context) {
 	contract, err := serviceInfo.Deduct.GetContractByContractIDFromDB(req.ContractID)
 	if err != nil {
 		c.JSON(200, model.PreDeductNotifyResponse{ReturnCode: model.ErrCodeFail, ReturnMsg: "签约不存在", ResultCode: model.ErrCodeFail, ErrCode: model.ErrCodeSignNotFound, ErrCodeDes: "未找到签约关系"})
+		return
+	}
+	if _, statusErr := serviceInfo.Contract.GetContractStatusByContractID(contract.ID); statusErr != nil {
+		c.JSON(200, model.PreDeductNotifyResponse{ReturnCode: model.ErrCodeFail, ReturnMsg: "订阅状态不存在", ResultCode: model.ErrCodeFail, ErrCode: model.ErrCodeSignNotFound, ErrCodeDes: "未找到订阅状态"})
 		return
 	}
 	bodyBytes := new(bytes.Buffer)
