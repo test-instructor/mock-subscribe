@@ -57,41 +57,72 @@
         style="width: 100%"
         tooltip-effect="dark"
         :data="tableData"
-        row-key="ID"
+        :row-key="getRowKey"
       >
         <el-table-column type="selection" width="55" />
-        <el-table-column align="left" label="日期" prop="CreatedAt" width="180">
+        <el-table-column align="left" label="日期" width="180">
           <template #default="scope">
-            <span>{{ formatDate(scope.row.CreatedAt) }}</span>
+            <span>{{ formatDateTime(scope.row.contract?.CreatedAt) }}</span>
           </template>
         </el-table-column>
-        <el-table-column align="left" label="协议号" prop="contractId" width="180" show-overflow-tooltip />
-        <el-table-column align="left" label="外部签约单号" prop="outContractId" width="160" show-overflow-tooltip />
-        <el-table-column align="left" label="OpenID" prop="openId" width="150" show-overflow-tooltip />
-        <el-table-column align="left" label="协议状态" prop="contractStatus" width="120">
+        <el-table-column align="left" label="协议号" width="180" show-overflow-tooltip>
           <template #default="scope">
-            <el-tag :type="getStatusType(scope.row.contractStatus)">{{ getStatusLabel(scope.row.contractStatus) }}</el-tag>
+            <span>{{ scope.row.contract?.contractId || '-' }}</span>
           </template>
         </el-table-column>
-        <el-table-column align="left" label="解约方式" prop="terminateType" width="120" />
-        <el-table-column align="left" label="到期时间" prop="ExpireTime" width="180">
+        <el-table-column align="left" label="外部签约单号" width="180" show-overflow-tooltip>
           <template #default="scope">
-            <span>{{ scope.row.expireTime ? formatDate(scope.row.expireTime) : '-' }}</span>
+            <span>{{ scope.row.contract?.outContractId || '-' }}</span>
           </template>
         </el-table-column>
-        <el-table-column align="left" label="首次扣款" prop="isFirstDeduct" width="100">
+        <el-table-column align="left" label="OpenID" width="180" show-overflow-tooltip>
           <template #default="scope">
-            <el-tag :type="scope.row.isFirstDeduct ? 'success' : 'info'">{{ scope.row.isFirstDeduct ? '是' : '否' }}</el-tag>
+            <span>{{ scope.row.contract?.openId || '-' }}</span>
           </template>
         </el-table-column>
-        <el-table-column align="left" label="已预通知" prop="preNotifyCalled" width="100">
+        <el-table-column align="left" label="外部用户ID" width="180" show-overflow-tooltip>
           <template #default="scope">
-            <el-tag :type="scope.row.preNotifyCalled ? 'warning' : 'info'">{{ scope.row.preNotifyCalled ? '是' : '否' }}</el-tag>
+            <span>{{ scope.row.contract?.outUserId || '-' }}</span>
           </template>
         </el-table-column>
-        <el-table-column align="left" label="最近预通知时间" prop="LastPreNotifyTime" width="180">
+        <el-table-column align="left" label="协议状态" width="120">
           <template #default="scope">
-            <span>{{ scope.row.lastPreNotifyTime ? formatDate(scope.row.lastPreNotifyTime) : '-' }}</span>
+            <el-tag :type="getStatusType(scope.row.status?.contractStatus)">{{ getStatusLabel(scope.row.status?.contractStatus) }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column align="left" label="签约流水号" width="220" show-overflow-tooltip>
+          <template #default="scope">
+            <span>{{ scope.row.status?.signSerialNo || scope.row.contract?.signSerialNo || '-' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column align="left" label="解约方式" width="140" show-overflow-tooltip>
+          <template #default="scope">
+            <span>{{ getTerminateTypeLabel(scope.row.status?.terminateType) }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column align="left" label="到期时间" width="180">
+          <template #default="scope">
+            <span>{{ formatDateTime(scope.row.status?.expireTime || scope.row.contract?.expireTime) }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column align="left" label="首次扣款" width="100">
+          <template #default="scope">
+            <el-tag :type="scope.row.status?.isFirstDeduct ? 'success' : 'info'">{{ scope.row.status?.isFirstDeduct ? '是' : '否' }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column align="left" label="已预通知" width="100">
+          <template #default="scope">
+            <el-tag :type="scope.row.status?.preNotifyCalled ? 'warning' : 'info'">{{ scope.row.status?.preNotifyCalled ? '是' : '否' }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column align="left" label="最近预通知时间" width="180">
+          <template #default="scope">
+            <span>{{ formatDateTime(scope.row.status?.lastPreNotifyTime) }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column align="left" label="回调通知地址" min-width="220" show-overflow-tooltip>
+          <template #default="scope">
+            <span>{{ scope.row.contract?.notifyUrl || '-' }}</span>
           </template>
         </el-table-column>
         <el-table-column align="left" label="操作" fixed="right" min-width="160">
@@ -162,7 +193,7 @@
 import { getContractList, findContract, updateContractStatus } from '@/plugin/mock_subscribe/api/contract'
 import { formatDate } from '@/utils/format'
 import { ElMessage } from 'element-plus'
-import { ref, reactive, watch } from 'vue'
+import { reactive, ref, watch } from 'vue'
 
 defineOptions({ name: 'MockSubscribeContract' })
 
@@ -192,45 +223,16 @@ const tableData = ref([])
 
 const elSearchFormRef = ref(null)
 const elFormRef = ref(null)
-
-const handleSizeChange = (val) => {
-  pageSize.value = val
-  getTableData()
-}
-
-const handleCurrentChange = (val) => {
-  page.value = val
-  getTableData()
-}
-
-const getTableData = async () => {
-  const res = await getContractList({
-    page: page.value,
-    pageSize: pageSize.value,
-    ...searchInfo.value
-  })
-  if (res.code === 0) {
-    tableData.value = res.data.list
-    total.value = res.data.total
-  }
-}
-
-getTableData()
-
-const onReset = () => {
-  searchInfo.value = { startCreatedAt: null, endCreatedAt: null, openId: '', contractStatus: '' }
-  getTableData()
-}
-
-const onSubmit = () => {
-  elSearchFormRef.value?.validate((valid) => {
-    if (valid) {
-      getTableData()
-    }
-  })
-}
-
 const dialogFormVisible = ref(false)
+
+const formatDateTime = (value) => {
+  if (!value) return '-'
+  const dateValue = value instanceof Date ? value : new Date(value)
+  if (Number.isNaN(dateValue.getTime())) return '-'
+  return formatDate(dateValue)
+}
+
+const getRowKey = (row) => row.contract?.ID ?? row.contract?.id ?? row.ID ?? row.id
 
 const getStatusType = (status) => {
   switch (status) {
@@ -252,8 +254,56 @@ const getStatusLabel = (status) => {
     case 'TERMINATED': return '已解约'
     case 'EXPIRED': return '已到期'
     case 'PAUSE': return '已暂停'
-    default: return status
+    default: return status || '-'
   }
+}
+
+const getTerminateTypeLabel = (terminateType) => {
+  switch (terminateType) {
+    case 'USER_REQUEST': return '用户申请解约'
+    case 'MERCHANT_REQUEST': return '商户申请解约'
+    case 'EXPIRED': return '到期自动解约'
+    case 'SYSTEM_REVOKE': return '系统撤销'
+    default: return terminateType || '-'
+  }
+}
+
+const handleSizeChange = (val) => {
+  pageSize.value = val
+  getTableData()
+}
+
+const handleCurrentChange = (val) => {
+  page.value = val
+  getTableData()
+}
+
+const getTableData = async () => {
+  const res = await getContractList({
+    page: page.value,
+    pageSize: pageSize.value,
+    ...searchInfo.value
+  })
+  if (res.code === 0) {
+    tableData.value = res.data.list || []
+    total.value = res.data.total || 0
+  }
+}
+
+getTableData()
+
+const onReset = () => {
+  searchInfo.value = { startCreatedAt: null, endCreatedAt: null, openId: '', contractStatus: '' }
+  getTableData()
+}
+
+const onSubmit = () => {
+  elSearchFormRef.value?.validate((valid) => {
+    if (valid) {
+      page.value = 1
+      getTableData()
+    }
+  })
 }
 
 watch(() => formData.value.contractStatus, (newVal) => {
@@ -263,14 +313,15 @@ watch(() => formData.value.contractStatus, (newVal) => {
 })
 
 const updateInfoFunc = async (row) => {
-  const res = await findContract({ ID: row.ID })
+  const contractId = row.contract?.ID ?? row.contract?.id ?? row.ID ?? row.id
+  const res = await findContract({ ID: contractId })
   if (res.code === 0) {
     formData.value = {
-      id: res.data.id,
-      contractId: res.data.contractId,
-      outContractId: res.data.outContractId,
-      contractStatus: res.data.contractStatus,
-      terminateType: res.data.terminateType
+      id: res.data.contract?.ID ?? res.data.contract?.id ?? contractId,
+      contractId: res.data.contract?.contractId ?? '',
+      outContractId: res.data.contract?.outContractId ?? '',
+      contractStatus: res.data.status?.contractStatus ?? '',
+      terminateType: res.data.status?.terminateType ?? ''
     }
     dialogFormVisible.value = true
   }
