@@ -180,6 +180,12 @@ func (s *deduct) GetContractByContractIDFromDB(contractID string) (model.Contrac
 	return c, err
 }
 
+func (s *deduct) GetContractByID(id uint) (model.Contract, error) {
+	var c model.Contract
+	err := global.GVA_DB.Where("id = ?", id).First(&c).Error
+	return c, err
+}
+
 func (s *deduct) SaveContractRecord(record *model.ContractRecord) error {
 	return global.GVA_DB.Create(record).Error
 }
@@ -242,6 +248,12 @@ func (s *deduct) SetContractStatus(id uint, status string, terminateType string)
 func (s *deduct) GetDeductRecordByOutTradeNo(outTradeNo string) (model.DeductRecord, error) {
 	var r model.DeductRecord
 	err := global.GVA_DB.Where("out_trade_no = ?", outTradeNo).First(&r).Error
+	return r, err
+}
+
+func (s *deduct) GetDeductRecordByTransactionID(transactionID string) (model.DeductRecord, error) {
+	var r model.DeductRecord
+	err := global.GVA_DB.Where("transaction_id = ?", transactionID).First(&r).Error
 	return r, err
 }
 

@@ -60,16 +60,16 @@ func (s *callbackRecord) BuildContractSignParams(req model.ContractCallbackReque
 		"appid":                req.AppID,
 		"mch_id":               req.MchID,
 		"contract_id":          req.ContractID,
+		"out_contract_code":    req.OutContractCode,
 		"contract_status":      req.ContractStatus,
 		"contract_ending_type": req.ContractEndingType,
-		"out_contract_code":    req.OutContractCode,
 		"contract_ext_id":      req.ContractExtID,
+		"plan_id":              req.PlanID,
+		"openid":               req.OpenID,
 		"sign_type":            req.SignType,
 		"timestamp":            req.TimeStamp,
 		"nonce":                req.Nonce,
 		"sign":                 req.Sign,
-		"plan_id":              req.PlanID,
-		"openid":               req.OpenID,
 	}
 }
 

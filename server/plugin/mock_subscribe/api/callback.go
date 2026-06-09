@@ -34,12 +34,16 @@ func (a *callback) ReceiveContract(c *gin.Context) {
 	}
 
 	headers, _ := json.Marshal(c.Request.Header)
+	callbackType := model.CallbackTypeContractSign
+	if strings.TrimSpace(req.ContractEndingType) != "" || req.ContractStatus == model.ContractStatusTerminated {
+		callbackType = model.CallbackTypeTerminate
+	}
 	record := model.CallbackRecord{
 		MchID:           req.MchID,
 		OutContractCode: req.OutContractCode,
 		ContractCode:    req.ContractID,
 		SignSerialNo:    req.ContractExtID,
-		CallbackType:    "contract_sign_callback",
+		CallbackType:    callbackType,
 		SourceIP:        clientIP(c),
 		Headers:         string(headers),
 		RawBody:         string(body),

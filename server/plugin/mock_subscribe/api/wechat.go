@@ -346,27 +346,102 @@ func (a *wechat) QueryDeduct(c *gin.Context) {
 		c.String(200, "<xml><return_code>FAIL</return_code><return_msg>读取请求失败</return_msg></xml>")
 		return
 	}
-	var req model.DeductApplyRequest
+	var req model.QueryDeductRequest
 	if err = serviceInfo.XMLCodec.Unmarshal(body, &req); err != nil {
 		c.String(200, "<xml><return_code>FAIL</return_code><return_msg>XML解析失败</return_msg></xml>")
 		return
 	}
 	merchant, err := serviceInfo.Merchant.GetMerchantByMchID(req.MchID)
 	if err != nil {
-		resp := model.DeductApplyResponse{ReturnCode: model.ErrCodeFail, ReturnMsg: "商户不存在", ResultCode: model.ErrCodeFail, ErrCode: model.ErrCodeInvalidParams, ErrCodeDes: "商户配置不存在"}
+		resp := model.QueryDeductResponse{ReturnCode: model.ErrCodeFail, ReturnMsg: "商户不存在", ResultCode: model.ErrCodeFail, ErrCode: model.ErrCodeInvalidParams, ErrCodeDes: "商户配置不存在"}
 		xml, _ := serviceInfo.XMLCodec.Marshal(resp)
 		c.Data(200, "application/xml; charset=utf-8", []byte(xml))
 		return
 	}
-	record, err := serviceInfo.Deduct.GetDeductRecordByOutTradeNo(req.OutTradeNo)
+	params := map[string]string{
+		"appid":          req.AppID,
+		"mch_id":         req.MchID,
+		"out_trade_no":   req.OutTradeNo,
+		"transaction_id": req.TransactionID,
+		"sign_type":      req.SignType,
+		"timestamp":      req.TimeStamp,
+		"nonce":          req.Nonce,
+		"sign":           req.Sign,
+	}
+	if err = serviceInfo.Signature.Verify(params, merchant.SignKey); err != nil {
+		resp := model.QueryDeductResponse{ReturnCode: model.ErrCodeFail, ReturnMsg: "签名校验失败", ResultCode: model.ErrCodeFail, ErrCode: model.ErrCodeInvalidSign, ErrCodeDes: err.Error()}
+		xml, _ := serviceInfo.XMLCodec.Marshal(resp)
+		c.Data(200, "application/xml; charset=utf-8", []byte(xml))
+		return
+	}
+
+	var record model.DeductRecord
+	if strings.TrimSpace(req.OutTradeNo) != "" {
+		record, err = serviceInfo.Deduct.GetDeductRecordByOutTradeNo(req.OutTradeNo)
+	}
+	if err != nil && strings.TrimSpace(req.TransactionID) != "" {
+		record, err = serviceInfo.Deduct.GetDeductRecordByTransactionID(req.TransactionID)
+	}
 	if err != nil {
-		resp := model.DeductApplyResponse{ReturnCode: model.ErrCodeFail, ReturnMsg: "扣款记录不存在", ResultCode: model.ErrCodeFail, ErrCode: model.ErrCodeFail, ErrCodeDes: "未找到扣款记录"}
+		resp := model.QueryDeductResponse{ReturnCode: model.ErrCodeFail, ReturnMsg: "订单不存在", ResultCode: model.ErrCodeFail, ErrCode: model.ErrCodeFail, ErrCodeDes: "未找到扣款记录"}
 		xml, _ := serviceInfo.XMLCodec.Marshal(resp)
 		c.Data(200, "application/xml; charset=utf-8", []byte(xml))
 		return
 	}
-	resp := model.DeductApplyResponse{ReturnCode: model.ErrCodeSuccess, ReturnMsg: "OK", ResultCode: model.ErrCodeSuccess, MchID: merchant.MchID, OutTradeNo: record.OutTradeNo, TransactionID: record.TransactionID, Amount: record.Amount, SignType: req.SignType, TimeStamp: strconv.FormatInt(time.Now().Unix(), 10), Nonce: req.Nonce}
-	resp.Sign = serviceInfo.Signature.Sign(map[string]string{"return_code": resp.ReturnCode, "result_code": resp.ResultCode, "mch_id": resp.MchID, "out_trade_no": resp.OutTradeNo, "transaction_id": resp.TransactionID, "amount": strconv.FormatInt(resp.Amount, 10), "sign_type": resp.SignType, "timestamp": resp.TimeStamp, "nonce": resp.Nonce}, merchant.SignKey)
+
+	contract, contractErr := serviceInfo.Deduct.GetContractByID(record.ContractID)
+	if contractErr != nil {
+		resp := model.QueryDeductResponse{ReturnCode: model.ErrCodeFail, ReturnMsg: "签约不存在", ResultCode: model.ErrCodeFail, ErrCode: model.ErrCodeSignNotFound, ErrCodeDes: "未找到签约关系"}
+		xml, _ := serviceInfo.XMLCodec.Marshal(resp)
+		c.Data(200, "application/xml; charset=utf-8", []byte(xml))
+		return
+	}
+
+	tradeState := record.Status
+	if strings.TrimSpace(tradeState) == "" {
+		tradeState = model.DeductStatusPending
+	}
+	timeEnd := ""
+	if !record.UpdatedAt.IsZero() {
+		timeEnd = record.UpdatedAt.Format("20060102150405")
+	}
+	resp := model.QueryDeductResponse{
+		ReturnCode:    model.ErrCodeSuccess,
+		ReturnMsg:     "OK",
+		ResultCode:    model.ErrCodeSuccess,
+		AppID:         req.AppID,
+		MchID:         merchant.MchID,
+		OpenID:        contract.OpenID,
+		TradeType:     "PAP",
+		TradeState:    tradeState,
+		BankType:      "MOCK",
+		TotalAmount:   record.Amount,
+		CashAmount:    record.Amount,
+		TransactionID: record.TransactionID,
+		OutTradeNo:    record.OutTradeNo,
+		TimeEnd:       timeEnd,
+		SignType:      req.SignType,
+		TimeStamp:     strconv.FormatInt(time.Now().Unix(), 10),
+		Nonce:         req.Nonce,
+	}
+	resp.Sign = serviceInfo.Signature.Sign(map[string]string{
+		"return_code":    resp.ReturnCode,
+		"result_code":    resp.ResultCode,
+		"appid":          resp.AppID,
+		"mch_id":         resp.MchID,
+		"openid":         resp.OpenID,
+		"trade_type":     resp.TradeType,
+		"trade_state":    resp.TradeState,
+		"bank_type":      resp.BankType,
+		"total_amount":   strconv.FormatInt(resp.TotalAmount, 10),
+		"cash_amount":    strconv.FormatInt(resp.CashAmount, 10),
+		"transaction_id": resp.TransactionID,
+		"out_trade_no":   resp.OutTradeNo,
+		"time_end":       resp.TimeEnd,
+		"sign_type":      resp.SignType,
+		"timestamp":      resp.TimeStamp,
+		"nonce":          resp.Nonce,
+	}, merchant.SignKey)
 	xmlResp, _ := serviceInfo.XMLCodec.Marshal(resp)
 	c.Data(200, "application/xml; charset=utf-8", []byte(xmlResp))
 }

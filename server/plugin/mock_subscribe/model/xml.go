@@ -71,6 +71,42 @@ type DeductApplyResponse struct {
 	Sign          string `xml:"sign"`           // 签名
 }
 
+// QueryDeductRequest 查询订单请求(XML)
+type QueryDeductRequest struct {
+	AppID         string `xml:"appid"`
+	MchID         string `xml:"mch_id"`
+	OutTradeNo    string `xml:"out_trade_no"`
+	TransactionID string `xml:"transaction_id"`
+	SignType      string `xml:"sign_type"`
+	TimeStamp     string `xml:"timestamp"`
+	Nonce         string `xml:"nonce"`
+	Sign          string `xml:"sign"`
+}
+
+// QueryDeductResponse 查询订单响应(XML)
+type QueryDeductResponse struct {
+	ReturnCode    string `xml:"return_code"`
+	ReturnMsg     string `xml:"return_msg"`
+	ResultCode    string `xml:"result_code"`
+	ErrCode       string `xml:"err_code"`
+	ErrCodeDes    string `xml:"err_code_des"`
+	AppID         string `xml:"appid"`
+	MchID         string `xml:"mch_id"`
+	OpenID        string `xml:"openid"`
+	TradeType     string `xml:"trade_type"`
+	TradeState    string `xml:"trade_state"`
+	BankType      string `xml:"bank_type"`
+	TotalAmount   int64  `xml:"total_amount"`
+	CashAmount    int64  `xml:"cash_amount"`
+	TransactionID string `xml:"transaction_id"`
+	OutTradeNo    string `xml:"out_trade_no"`
+	TimeEnd       string `xml:"time_end"`
+	SignType      string `xml:"sign_type"`
+	TimeStamp     string `xml:"timestamp"`
+	Nonce         string `xml:"nonce"`
+	Sign          string `xml:"sign"`
+}
+
 // ====================== 扣款结果通知 ======================
 
 // DeductNotify 扣款结果通知(XML)
