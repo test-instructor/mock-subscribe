@@ -277,19 +277,18 @@ type GenericACK struct {
 
 // PreDeductNotifyRequest 预扣费通知请求(JSON)
 type PreDeductNotifyRequest struct {
-	AppID         string `json:"appid"`
-	MchID         string `json:"mch_id"`
-	ContractID    string `json:"contract_id"`
-	OutTradeNo    string `json:"out_trade_no"`
-	TradeNo       string `json:"trade_no"`
-	ActionType    int    `json:"action_type"`
-	AccountID     string `json:"account_id"`
-	NotifyURL     string `json:"notify_url"`
-	RequestSerial int64  `json:"request_serial"`
-	SignType      string `json:"sign_type"`
-	TimeStamp     string `json:"timestamp"`
-	Nonce         string `json:"nonce"`
-	Sign          string `json:"sign"`
+	MchID string `json:"mchid"`
+	AppID string `json:"appid"`
+
+	DeductDuration struct {
+		Count int    `json:"count"`
+		Unit  string `json:"unit"`
+	} `json:"deduct_duration"`
+
+	EstimatedAmount struct {
+		Amount   int64  `json:"amount"`
+		Currency string `json:"currency"`
+	} `json:"estimated_amount"`
 }
 
 // PreDeductNotifyResponse 预扣费通知响应(JSON)
@@ -297,12 +296,6 @@ type PreDeductNotifyResponse struct {
 	ReturnCode string `json:"return_code"`
 	ReturnMsg  string `json:"return_msg"`
 	ResultCode string `json:"result_code"`
-	ErrCode    string `json:"err_code"`
-	ErrCodeDes string `json:"err_code_des"`
-	AppID      string `json:"appid"`
-	MchID      string `json:"mch_id"`
-	SignType   string `json:"sign_type"`
-	TimeStamp  string `json:"timestamp"`
-	Nonce      string `json:"nonce"`
-	Sign       string `json:"sign"`
+	ErrCode    string `json:"err_code,omitempty"`
+	ErrCodeDes string `json:"err_code_des,omitempty"`
 }

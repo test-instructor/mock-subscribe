@@ -125,6 +125,21 @@ def get_json(base_url: str, path: str, params: dict) -> dict:
     return resp.json()
 
 
+def post_json(base_url: str, path: str, payload: dict) -> tuple[dict, int]:
+    url = f"{base_url.rstrip('/')}{path}"
+    log_status('START', '发起 JSON 请求', method='POST', url=url, payload=payload)
+    try:
+        resp = requests.post(url, json=payload, timeout=60)
+        resp.raise_for_status()
+    except Exception as exc:
+        log_status('FAILED', 'JSON 请求失败', method='POST', url=url, error=str(exc))
+        raise
+    log_status('SUCCESS', 'JSON 请求成功', method='POST', url=url, status_code=resp.status_code)
+    if resp.text.strip():
+        return resp.json(), resp.status_code
+    return {}, resp.status_code
+
+
 def is_xml_api_success(resp_data: dict) -> bool:
     return resp_data.get('return_code') == SUCCESS_RETURN_CODE and resp_data.get('result_code') == SUCCESS_RESULT_CODE
 
@@ -199,6 +214,21 @@ def make_order_query_request(config: dict, out_trade_no: str, transaction_id: st
     }
     payload['sign'] = build_sign(payload, config['sign_key'])
     return payload
+
+
+def make_pre_notify_request(config: dict, total_amount: int) -> dict:
+    return {
+        'mchid': config['mch_id'],
+        'appid': config['app_id'],
+        'deduct_duration': {
+            'count': int(config.get('deduct_duration_count', 1)),
+            'unit': config.get('deduct_duration_unit', 'DAY'),
+        },
+        'estimated_amount': {
+            'amount': int(config.get('estimated_amount', total_amount)),
+            'currency': config.get('estimated_currency', 'CNY'),
+        },
+    }
 
 
 def sign_flow(config: dict, out_contract_code: str | None = None, openid: str | None = None) -> dict:
@@ -369,6 +399,30 @@ def apply_deduct_flow(config: dict, contract_id: str, total_amount: int, out_tra
     return result
 
 
+def pre_notify_flow(config: dict, contract_id: str, total_amount: int) -> dict:
+    log_status('START', '开始预扣费通知', contract_id=contract_id, total_amount=total_amount)
+    req = make_pre_notify_request(config, total_amount)
+    path_template = config['pre_notify_path']
+    path = path_template.format(contract_id=contract_id)
+    resp_data, status_code = post_json(config['base_url'], path, req)
+    result = {
+        'request': req,
+        'response': resp_data,
+        'status_code': status_code,
+        'success': resp_data.get('return_code') == SUCCESS_RETURN_CODE and resp_data.get('result_code') == SUCCESS_RESULT_CODE,
+    }
+    log_status(
+        'SUCCESS' if result['success'] else 'FAILED',
+        '预扣费通知完成',
+        contract_id=contract_id,
+        status_code=status_code,
+        return_code=resp_data.get('return_code', ''),
+        result_code=resp_data.get('result_code', ''),
+        err_code=resp_data.get('err_code', ''),
+    )
+    return result
+
+
 def query_order_flow(config: dict, out_trade_no: str, transaction_id: str = '') -> dict:
     log_status('START', '开始查询订单', out_trade_no=out_trade_no, transaction_id=transaction_id)
     req = make_order_query_request(config, out_trade_no, transaction_id)
@@ -517,6 +571,9 @@ def deduct_after_query_flow(config: dict, contract_id: str, out_contract_code: s
             'query': query_result,
             'deduct': None,
             'order': None,
+            'pre_notify': None,
+            'next_deduct': None,
+            'next_order': None,
         }
 
     contract_status = query_response.get('contract_status', '')
@@ -526,6 +583,9 @@ def deduct_after_query_flow(config: dict, contract_id: str, out_contract_code: s
             'query': query_result,
             'deduct': None,
             'order': None,
+            'pre_notify': None,
+            'next_deduct': None,
+            'next_order': None,
         }
 
     log_status('SUCCESS', '签约状态为已签约，开始申请扣款', contract_id=query_result['contract_id'], out_contract_code=out_contract_code, contract_status=contract_status)
@@ -537,13 +597,34 @@ def deduct_after_query_flow(config: dict, contract_id: str, out_contract_code: s
             'query': query_result,
             'deduct': deduct_result,
             'order': None,
+            'pre_notify': None,
+            'next_deduct': None,
+            'next_order': None,
         }
 
     order_result = query_order_until_terminal_flow(config, deduct_result['out_trade_no'], deduct_result['transaction_id'])
+    pre_notify_result = None
+    next_deduct_result = None
+    next_order_result = None
+
+    if order_result.get('trade_state') == SUCCESS_TRADE_STATE:
+        pre_notify_result = pre_notify_flow(config, query_result['contract_id'], total_amount)
+        if pre_notify_result.get('success'):
+            wait_seconds = int(config.get('pre_notify_wait_seconds', 60))
+            log_status('WAITING', '等待下一次扣费窗口', wait_seconds=wait_seconds)
+            time.sleep(wait_seconds)
+            next_deduct_result = apply_deduct_flow(config, query_result['contract_id'], total_amount)
+            next_deduct_response = next_deduct_result['response']
+            if is_xml_api_success(next_deduct_response):
+                next_order_result = query_order_until_terminal_flow(config, next_deduct_result['out_trade_no'], next_deduct_result['transaction_id'])
+
     return {
         'query': query_result,
         'deduct': deduct_result,
         'order': order_result,
+        'pre_notify': pre_notify_result,
+        'next_deduct': next_deduct_result,
+        'next_order': next_order_result,
     }
 
 

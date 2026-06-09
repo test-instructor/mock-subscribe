@@ -1,7 +1,7 @@
 package api
 
 import (
-	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"strconv"
@@ -399,25 +399,24 @@ func (a *wechat) ApplyDeduct(c *gin.Context) {
 	if transactionID == "" {
 		transactionID = fmt.Sprintf("MOCK-T-%d", time.Now().UnixNano())
 	}
-	record := model.DeductRecord{
-		ContractID:      contract.ID,
-		MerchantID:      merchant.ID,
-		OperationType:   "deduct",
-		RequestData:     string(body),
-		CallbackURL:     req.NotifyURL,
-		TransactionID:   transactionID,
-		OutTradeNo:      req.OutTradeNo,
-		Amount:          effectiveAmount,
-		Status:          model.DeductStatusPending,
-		IsFirstDeduct:   false,
-		PreNotifyCalled: false,
-	}
 
 	statusRecord, statusErr := serviceInfo.Contract.GetContractStatusByContractID(contract.ID)
 	if statusErr != nil {
-		record.Status = model.DeductStatusFailed
-		record.ErrorCode = model.ErrCodeSignNotFound
-		record.ErrorMessage = "订阅状态不存在"
+		record := model.DeductRecord{
+			ContractID:      contract.ID,
+			MerchantID:      merchant.ID,
+			OperationType:   model.DeductOperationTypeDeduct,
+			RequestData:     string(body),
+			CallbackURL:     req.NotifyURL,
+			TransactionID:   transactionID,
+			OutTradeNo:      req.OutTradeNo,
+			Amount:          effectiveAmount,
+			Status:          model.DeductStatusFailed,
+			IsFirstDeduct:   false,
+			PreNotifyCalled: false,
+			ErrorCode:       model.ErrCodeSignNotFound,
+			ErrorMessage:    "订阅状态不存在",
+		}
 		_ = serviceInfo.Deduct.SaveDeductRecord(&record)
 		resp := buildResp("订阅信息不存在", model.ErrCodeFail, model.ErrCodeSignNotFound, "未找到订阅状态", merchant.MchID, req.OutTradeNo, transactionID, effectiveAmount, req.SignType, effectiveNonce)
 		xml := writeXML(resp)
@@ -425,21 +424,52 @@ func (a *wechat) ApplyDeduct(c *gin.Context) {
 		return
 	}
 
-	record.IsFirstDeduct = statusRecord.IsFirstDeduct
-	record.PreNotifyCalled = statusRecord.PreNotifyCalled
+	callbackTarget := strings.TrimSpace(req.NotifyURL)
+	if callbackTarget == "" {
+		callbackTarget = strings.TrimSpace(contract.NotifyURL)
+	}
+
+	var record model.DeductRecord
+	usingExistingPreNotify := false
+	if !statusRecord.IsFirstDeduct {
+		record, err = serviceInfo.Deduct.GetLatestPendingPreNotifyRecord(contract.ID)
+		if err == nil {
+			usingExistingPreNotify = true
+		}
+	}
+
+	if !usingExistingPreNotify {
+		record = model.DeductRecord{
+			ContractID:      contract.ID,
+			MerchantID:      merchant.ID,
+			OperationType:   model.DeductOperationTypeDeduct,
+			RequestData:     string(body),
+			CallbackURL:     callbackTarget,
+			TransactionID:   transactionID,
+			OutTradeNo:      req.OutTradeNo,
+			Amount:          effectiveAmount,
+			Status:          model.DeductStatusPending,
+			IsFirstDeduct:   statusRecord.IsFirstDeduct,
+			PreNotifyCalled: statusRecord.PreNotifyCalled,
+		}
+	}
 
 	if statusRecord.ContractStatus != model.ContractStatusActive {
 		record.Status = model.DeductStatusFailed
 		record.ErrorCode = model.ErrCodeDeductNotAllowed
 		record.ErrorMessage = "签约未生效或已解约"
-		_ = serviceInfo.Deduct.SaveDeductRecord(&record)
+		if usingExistingPreNotify {
+			_ = serviceInfo.Deduct.UpdatePreNotifyRecordResponse(record.ID, "", record.Status, record.ErrorCode, record.ErrorMessage)
+		} else {
+			_ = serviceInfo.Deduct.SaveDeductRecord(&record)
+		}
 		resp := buildResp("签约状态不可扣款", model.ErrCodeFail, model.ErrCodeDeductNotAllowed, "签约未生效或已解约", merchant.MchID, req.OutTradeNo, transactionID, effectiveAmount, req.SignType, effectiveNonce)
 		xml := writeXML(resp)
 		_ = serviceInfo.Deduct.UpdateDeductRecordResponse(record.ID, xml, record.Status)
 		return
 	}
 
-	if !record.IsFirstDeduct && merchant.StrictDeductRule && !statusRecord.PreNotifyCalled {
+	if !statusRecord.IsFirstDeduct && merchant.StrictDeductRule && !usingExistingPreNotify {
 		record.Status = model.DeductStatusFailed
 		record.ErrorCode = model.ErrCodePreNotifyRequired
 		record.ErrorMessage = "非首次扣款前必须先调用预扣费通知API"
@@ -450,7 +480,21 @@ func (a *wechat) ApplyDeduct(c *gin.Context) {
 		return
 	}
 
-	_ = serviceInfo.Deduct.SaveDeductRecord(&record)
+	if usingExistingPreNotify {
+		_ = serviceInfo.Deduct.ConsumePreNotifyRecord(record.ID, req.OutTradeNo, transactionID, string(body), callbackTarget, "", effectiveAmount, statusRecord.IsFirstDeduct)
+		record.OperationType = model.DeductOperationTypeDeduct
+		record.OutTradeNo = req.OutTradeNo
+		record.TransactionID = transactionID
+		record.RequestData = string(body)
+		record.CallbackURL = callbackTarget
+		record.Amount = effectiveAmount
+		record.Status = model.DeductStatusPending
+		record.IsFirstDeduct = statusRecord.IsFirstDeduct
+		record.PreNotifyCalled = true
+	} else {
+		_ = serviceInfo.Deduct.SaveDeductRecord(&record)
+	}
+
 	if merchant.DeductStatusDelay > 0 {
 		time.Sleep(time.Duration(merchant.DeductStatusDelay) * time.Second)
 	}
@@ -488,10 +532,6 @@ func (a *wechat) ApplyDeduct(c *gin.Context) {
 			time.Sleep(time.Duration(merchant.DeductCallbackDelay) * time.Second)
 		}
 		callbackXML := serviceInfo.Callback.BuildDeductCallbackXML(merchant, contract, record, req.SignType)
-		callbackTarget := strings.TrimSpace(req.NotifyURL)
-		if callbackTarget == "" {
-			callbackTarget = strings.TrimSpace(contract.NotifyURL)
-		}
 		result, callbackErr := serviceInfo.Callback.DoXMLCallback(callbackTarget, callbackXML)
 		if callbackErr != nil {
 			result = callbackErr.Error() + "; " + result
@@ -616,35 +656,91 @@ func (a *wechat) PreDeductNotify(c *gin.Context) {
 		c.JSON(200, model.PreDeductNotifyResponse{ReturnCode: model.ErrCodeFail, ReturnMsg: err.Error(), ResultCode: model.ErrCodeFail, ErrCode: model.ErrCodeInvalidParams, ErrCodeDes: err.Error()})
 		return
 	}
-	if req.ContractID == "" {
-		req.ContractID = c.Param("contract_id")
+
+	contractID := strings.TrimSpace(c.Param("contract_id"))
+	if contractID == "" {
+		c.JSON(200, model.PreDeductNotifyResponse{ReturnCode: model.ErrCodeFail, ReturnMsg: "contract_id不能为空", ResultCode: model.ErrCodeFail, ErrCode: model.ErrCodeInvalidParams, ErrCodeDes: "contract_id不能为空"})
+		return
 	}
+	if strings.TrimSpace(req.MchID) == "" || strings.TrimSpace(req.AppID) == "" {
+		c.JSON(200, model.PreDeductNotifyResponse{ReturnCode: model.ErrCodeFail, ReturnMsg: "mchid或appid不能为空", ResultCode: model.ErrCodeFail, ErrCode: model.ErrCodeInvalidParams, ErrCodeDes: "mchid或appid不能为空"})
+		return
+	}
+	if req.EstimatedAmount.Amount <= 0 {
+		c.JSON(200, model.PreDeductNotifyResponse{ReturnCode: model.ErrCodeFail, ReturnMsg: "预计扣费金额必须大于0", ResultCode: model.ErrCodeFail, ErrCode: model.ErrCodeInvalidParams, ErrCodeDes: "estimated_amount.amount必须大于0"})
+		return
+	}
+	if req.DeductDuration.Count <= 0 {
+		req.DeductDuration.Count = 1
+	}
+	if strings.TrimSpace(req.DeductDuration.Unit) == "" {
+		req.DeductDuration.Unit = "DAY"
+	}
+	if strings.TrimSpace(req.EstimatedAmount.Currency) == "" {
+		req.EstimatedAmount.Currency = "CNY"
+	}
+
 	merchant, err := serviceInfo.Merchant.GetMerchantByMchID(req.MchID)
 	if err != nil {
 		c.JSON(200, model.PreDeductNotifyResponse{ReturnCode: model.ErrCodeFail, ReturnMsg: "商户不存在", ResultCode: model.ErrCodeFail, ErrCode: model.ErrCodeInvalidParams, ErrCodeDes: "商户配置不存在"})
 		return
 	}
-	params := map[string]string{"appid": req.AppID, "mch_id": req.MchID, "contract_id": req.ContractID, "out_trade_no": req.OutTradeNo, "trade_no": req.TradeNo, "action_type": strconv.Itoa(req.ActionType), "account_id": req.AccountID, "notify_url": req.NotifyURL, "request_serial": strconv.FormatInt(req.RequestSerial, 10), "sign_type": req.SignType, "timestamp": req.TimeStamp, "nonce": req.Nonce, "sign": req.Sign}
-	if err = serviceInfo.Signature.VerifyIfNeeded(merchant.VerifySign, params, merchant.SignKey); err != nil {
-		c.JSON(200, model.PreDeductNotifyResponse{ReturnCode: model.ErrCodeFail, ReturnMsg: "签名校验失败", ResultCode: model.ErrCodeFail, ErrCode: model.ErrCodeInvalidSign, ErrCodeDes: err.Error()})
-		return
-	}
-	contract, err := serviceInfo.Deduct.GetContractByContractIDFromDB(req.ContractID)
+
+	contract, err := serviceInfo.Deduct.GetContractByContractIDFromDB(contractID)
 	if err != nil {
 		c.JSON(200, model.PreDeductNotifyResponse{ReturnCode: model.ErrCodeFail, ReturnMsg: "签约不存在", ResultCode: model.ErrCodeFail, ErrCode: model.ErrCodeSignNotFound, ErrCodeDes: "未找到签约关系"})
 		return
 	}
-	if _, statusErr := serviceInfo.Contract.GetContractStatusByContractID(contract.ID); statusErr != nil {
+
+	statusRecord, statusErr := serviceInfo.Contract.GetContractStatusByContractID(contract.ID)
+	if statusErr != nil {
 		c.JSON(200, model.PreDeductNotifyResponse{ReturnCode: model.ErrCodeFail, ReturnMsg: "订阅状态不存在", ResultCode: model.ErrCodeFail, ErrCode: model.ErrCodeSignNotFound, ErrCodeDes: "未找到订阅状态"})
 		return
 	}
-	bodyBytes := new(bytes.Buffer)
-	_ = c.Request.Body.Close()
-	bodyBytes.WriteString(fmt.Sprintf("appid=%s&mch_id=%s&contract_id=%s&out_trade_no=%s&trade_no=%s", req.AppID, req.MchID, req.ContractID, req.OutTradeNo, req.TradeNo))
-	record := model.DeductRecord{ContractID: contract.ID, MerchantID: merchant.ID, OperationType: "pre_notify", RequestData: bodyBytes.String(), CallbackURL: req.NotifyURL, OutTradeNo: req.OutTradeNo, TransactionID: req.TradeNo, Status: model.DeductStatusSuccess, IsFirstDeduct: false, PreNotifyCalled: true}
-	_ = serviceInfo.Deduct.SaveDeductRecord(&record)
+	if statusRecord.ContractStatus != model.ContractStatusActive {
+		c.JSON(200, model.PreDeductNotifyResponse{ReturnCode: model.ErrCodeFail, ReturnMsg: "签约状态不可预扣费", ResultCode: model.ErrCodeFail, ErrCode: model.ErrCodeDeductNotAllowed, ErrCodeDes: "签约未生效或已解约"})
+		return
+	}
+
+	if existing, existingErr := serviceInfo.Deduct.GetLatestPendingPreNotifyRecord(contract.ID); existingErr == nil && existing.ID != 0 {
+		c.JSON(200, model.PreDeductNotifyResponse{ReturnCode: model.ErrCodeFail, ReturnMsg: "预扣费通知已存在", ResultCode: model.ErrCodeFail, ErrCode: model.ErrCodeAlreadyExists, ErrCodeDes: "已经成功发送通知，无需重复调用"})
+		return
+	}
+
+	now := time.Now()
+	if merchant.StrictDeductRule {
+		loc := time.FixedZone("CST", 8*3600)
+		beijingHour := now.In(loc).Hour()
+		if beijingHour < 7 || beijingHour >= 22 {
+			c.JSON(200, model.PreDeductNotifyResponse{ReturnCode: model.ErrCodeFail, ReturnMsg: "不在可通知时间段", ResultCode: model.ErrCodeFail, ErrCode: model.ErrCodeDeductNotAllowed, ErrCodeDes: "预扣费通知只允许在北京时间7:00-22:00调用"})
+			return
+		}
+	}
+
+	requestData, _ := json.Marshal(map[string]any{
+		"contract_id":      contractID,
+		"mchid":            req.MchID,
+		"appid":            req.AppID,
+		"deduct_duration":  req.DeductDuration,
+		"estimated_amount": req.EstimatedAmount,
+	})
+	record := model.DeductRecord{
+		ContractID:      contract.ID,
+		MerchantID:      merchant.ID,
+		OperationType:   model.DeductOperationTypePreNotify,
+		RequestData:     string(requestData),
+		CallbackURL:     strings.TrimSpace(contract.NotifyURL),
+		Amount:          req.EstimatedAmount.Amount,
+		Status:          model.DeductStatusWaitDeduct,
+		IsFirstDeduct:   false,
+		PreNotifyCalled: true,
+	}
+	if err = serviceInfo.Deduct.SaveDeductRecord(&record); err != nil {
+		c.JSON(200, model.PreDeductNotifyResponse{ReturnCode: model.ErrCodeFail, ReturnMsg: "预扣费记录保存失败", ResultCode: model.ErrCodeFail, ErrCode: model.ErrCodeFail, ErrCodeDes: err.Error()})
+		return
+	}
 	_ = serviceInfo.Contract.MarkPreNotifyCalled(contract.ID)
-	resp := model.PreDeductNotifyResponse{ReturnCode: model.ErrCodeSuccess, ReturnMsg: "OK", ResultCode: model.ErrCodeSuccess, AppID: req.AppID, MchID: req.MchID, SignType: req.SignType, TimeStamp: strconv.FormatInt(time.Now().Unix(), 10), Nonce: req.Nonce}
-	resp.Sign = serviceInfo.Signature.Sign(map[string]string{"return_code": resp.ReturnCode, "result_code": resp.ResultCode, "appid": resp.AppID, "mch_id": resp.MchID, "sign_type": resp.SignType, "timestamp": resp.TimeStamp, "nonce": resp.Nonce}, merchant.SignKey)
-	c.JSON(200, resp)
+	responseData := `{"http_status":204}`
+	_ = serviceInfo.Deduct.UpdatePreNotifyRecordResponse(record.ID, responseData, model.DeductStatusWaitDeduct, "", "")
+	c.JSON(200, model.PreDeductNotifyResponse{ReturnCode: model.ErrCodeSuccess, ReturnMsg: "OK", ResultCode: model.ErrCodeSuccess})
 }

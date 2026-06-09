@@ -276,6 +276,43 @@ func (s *deduct) UpdateDeductRecordByCallback(id uint, status string, transactio
 	return global.GVA_DB.Model(&model.DeductRecord{}).Where("id = ?", id).Updates(updates).Error
 }
 
+func (s *deduct) GetLatestPendingPreNotifyRecord(contractID uint) (model.DeductRecord, error) {
+	var record model.DeductRecord
+	err := global.GVA_DB.Where("contract_id = ? AND operation_type = ? AND pre_notify_called = ? AND status = ?", contractID, model.DeductOperationTypePreNotify, true, model.DeductStatusWaitDeduct).Order("id desc").First(&record).Error
+	return record, err
+}
+
+func (s *deduct) GetDeductRecordByOutTradeNoExcludingPreNotify(outTradeNo string) (model.DeductRecord, error) {
+	var r model.DeductRecord
+	err := global.GVA_DB.Where("out_trade_no = ? AND operation_type <> ?", outTradeNo, model.DeductOperationTypePreNotify).First(&r).Error
+	return r, err
+}
+
+func (s *deduct) ConsumePreNotifyRecord(recordID uint, outTradeNo string, transactionID string, requestData string, callbackURL string, responseData string, amount int64, isFirstDeduct bool) error {
+	updates := map[string]any{
+		"operation_type":    model.DeductOperationTypeDeduct,
+		"out_trade_no":      outTradeNo,
+		"transaction_id":    transactionID,
+		"request_data":      requestData,
+		"callback_url":      callbackURL,
+		"response_data":     responseData,
+		"amount":            amount,
+		"is_first_deduct":   isFirstDeduct,
+		"pre_notify_called": true,
+		"status":            model.DeductStatusPending,
+	}
+	return global.GVA_DB.Model(&model.DeductRecord{}).Where("id = ?", recordID).Updates(updates).Error
+}
+
+func (s *deduct) UpdatePreNotifyRecordResponse(id uint, responseData string, status string, errCode string, errMsg string) error {
+	return global.GVA_DB.Model(&model.DeductRecord{}).Where("id = ?", id).Updates(map[string]any{
+		"response_data": responseData,
+		"status":        status,
+		"error_code":    errCode,
+		"error_message": errMsg,
+	}).Error
+}
+
 func (s *deduct) ClearContractPreNotify(contractID uint) error {
 	return global.GVA_DB.Model(&model.Contract{}).Where("id = ?", contractID).Update("pre_notify_called", false).Error
 }

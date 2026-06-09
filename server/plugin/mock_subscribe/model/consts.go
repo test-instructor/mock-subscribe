@@ -10,11 +10,16 @@ const (
 	ContractStatusPause      = "PAUSE"      // 已暂停
 
 	// DeductStatus 扣款状态
-	DeductStatusPending   = "PENDING"   // 扣款中
-	DeductStatusSuccess   = "SUCCESS"   // 扣款成功
-	DeductStatusFailed    = "FAILED"    // 扣款失败
-	DeductStatusRefunding = "REFUNDING" // 退款中
-	DeductStatusRefunded  = "REFUNDED"  // 已退款
+	DeductStatusPending    = "PENDING"     // 扣款中
+	DeductStatusSuccess    = "SUCCESS"     // 扣款成功
+	DeductStatusFailed     = "FAILED"      // 扣款失败
+	DeductStatusRefunding  = "REFUNDING"   // 退款中
+	DeductStatusRefunded   = "REFUNDED"    // 已退款
+	DeductStatusWaitDeduct = "WAIT_DEDUCT" // 已预扣费通知，待扣费
+
+	// DeductOperationType 扣费流水类型
+	DeductOperationTypeDeduct    = "deduct"
+	DeductOperationTypePreNotify = "pre_notify"
 
 	// TerminateType 解约方式
 	TerminateTypeUserRequest     = "USER_REQUEST"     // 用户申请解约
@@ -37,6 +42,7 @@ const (
 	ErrCodeInvalidSign       = "INVALID_SIGN"
 	ErrCodeDeductNotAllowed  = "DEDUCT_NOT_ALLOWED"
 	ErrCodePreNotifyRequired = "PRE_NOTIFY_REQUIRED"
+	ErrCodeAlreadyExists     = "RESOURCE_ALREADY_EXISTS"
 
 	// XMLRoot XML根节点
 	XMLRootSign              = "xml"
