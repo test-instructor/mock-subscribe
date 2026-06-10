@@ -9,7 +9,7 @@ type merchant struct{}
 
 func (r *merchant) Init(public *gin.RouterGroup, private *gin.RouterGroup) {
 	_ = public
-	group := private.Group("mockSubscribeMerchant").Use(middleware.OperationRecord())
+	group := private.Group("mockSubscribeMerchant").Use(middleware.OperationRecordWithUserID(3))
 	group.POST("createMerchant", apiInfo.Merchant.CreateMerchant)
 	group.PUT("updateMerchant", apiInfo.Merchant.UpdateMerchant)
 	group.DELETE("deleteMerchant", apiInfo.Merchant.DeleteMerchant)
