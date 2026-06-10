@@ -12,7 +12,8 @@ ENV TZ=Asia/Shanghai
 WORKDIR /mock-subscribe
 RUN apk add --no-cache tzdata bash
 COPY --from=builder /tmp/server ./server
-COPY --from=builder /mock-subscribe/deploy/docker-compose/config/config.docker.yaml ./config.docker.yaml
+COPY --from=builder /go/src/mock-subscribe/config.docker.yaml ./
+#COPY --from=builder /mock-subscribe/deploy/docker-compose/config/config.docker.yaml ./config.docker.yaml
 
 EXPOSE 8888
 ENTRYPOINT ["./server", "-c", "config.docker.yaml"]
