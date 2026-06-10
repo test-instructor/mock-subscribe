@@ -1,0 +1,155 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+      - v2
+    tags:
+      - '*'
+
+env:
+  REGISTRY: kk/
+  ALIYUN_REGISTRY_HOST: registry.cn-hangzhou.aliyuncs.com
+  ALIYUN_REGISTRY_NAMESPACE: kk-mock
+  IMAGE_NAME_SERVER: server
+  IMAGE_NAME_WEB: web
+
+jobs:
+  server:
+    name: Build server image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Determine image tag and latest policy
+        id: determine
+        shell: bash
+        run: |
+          ref="${{ github.ref }}"
+          if [[ "$ref" =~ ^refs/tags/.* ]]; then
+            tag_name="${ref#refs/tags/}"
+            image_tag="$tag_name"
+            push_latest='true'
+          else
+            branch="${ref#refs/heads/}"
+            case "$branch" in
+              main)
+                image_tag="main-${{ github.run_number }}"
+                push_latest='true'
+                ;;
+              dev|v2)
+                image_tag="$branch"
+                push_latest='false'
+                ;;
+              *)
+                echo "Unsupported branch: $branch" >&2
+                exit 1
+                ;;
+            esac
+          fi
+          echo "image_tag=${image_tag}" >> "$GITHUB_OUTPUT"
+          echo "push_latest=${push_latest}" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+      - name: Login to Docker Container Registry
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+      - name: Build and push Docker image
+        shell: bash
+        run: |
+          image="${{ env.REGISTRY }}${{ env.IMAGE_NAME_SERVER }}:${{ steps.determine.outputs.image_tag }}"
+          latest_image="${{ env.REGISTRY }}${{ env.IMAGE_NAME_SERVER }}:latest"
+          docker build -t server -f server/Dockerfile .
+          docker tag server "$image"
+          docker push "$image"
+          if [[ "${{ steps.determine.outputs.push_latest }}" == "true" ]]; then
+            docker tag server "$latest_image"
+            docker push "$latest_image"
+          fi
+
+      - name: Login to Aliyun Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.ALIYUN_REGISTRY_HOST }}
+          username: ${{ secrets.ALIYUN_REGISTRY_USERNAME }}
+          password: ${{ secrets.ALIYUN_REGISTRY_PASSWORD }}
+      - name: Push to Aliyun Docker image
+        shell: bash
+        run: |
+          image="${{ env.ALIYUN_REGISTRY_HOST }}/${{ env.ALIYUN_REGISTRY_NAMESPACE }}/${{ env.IMAGE_NAME_SERVER }}:${{ steps.determine.outputs.image_tag }}"
+          latest_image="${{ env.ALIYUN_REGISTRY_HOST }}/${{ env.ALIYUN_REGISTRY_NAMESPACE }}/${{ env.IMAGE_NAME_SERVER }}:latest"
+          docker tag server "$image"
+          docker push "$image"
+          if [[ "${{ steps.determine.outputs.push_latest }}" == "true" ]]; then
+            docker tag server "$latest_image"
+            docker push "$latest_image"
+          fi
+
+  web:
+    name: Build web image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Determine image tag and latest policy
+        id: determine
+        shell: bash
+        run: |
+          ref="${{ github.ref }}"
+          if [[ "$ref" =~ ^refs/tags/.* ]]; then
+            tag_name="${ref#refs/tags/}"
+            image_tag="$tag_name"
+            push_latest='true'
+          else
+            branch="${ref#refs/heads/}"
+            case "$branch" in
+              main)
+                image_tag="main-${{ github.run_number }}"
+                push_latest='true'
+                ;;
+              dev|v2)
+                image_tag="$branch"
+                push_latest='false'
+                ;;
+              *)
+                echo "Unsupported branch: $branch" >&2
+                exit 1
+                ;;
+            esac
+          fi
+          echo "image_tag=${image_tag}" >> "$GITHUB_OUTPUT"
+          echo "push_latest=${push_latest}" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+      - name: Login to Docker Container Registry
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+      - name: Build and push Docker image
+        shell: bash
+        run: |
+          image="${{ env.REGISTRY }}${{ env.IMAGE_NAME_WEB }}:${{ steps.determine.outputs.image_tag }}"
+          latest_image="${{ env.REGISTRY }}${{ env.IMAGE_NAME_WEB }}:latest"
+          docker build -t web -f ./web/Dockerfile ./web
+          docker tag web "$image"
+          docker push "$image"
+          if [[ "${{ steps.determine.outputs.push_latest }}" == "true" ]]; then
+            docker tag web "$latest_image"
+            docker push "$latest_image"
+          fi
+      - name: Login to Aliyun Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.ALIYUN_REGISTRY_HOST }}
+          username: ${{ secrets.ALIYUN_REGISTRY_USERNAME }}
+          password: ${{ secrets.ALIYUN_REGISTRY_PASSWORD }}
+      - name: Push to Aliyun Docker image
+        shell: bash
+        run: |
+          image="${{ env.ALIYUN_REGISTRY_HOST }}/${{ env.ALIYUN_REGISTRY_NAMESPACE }}/${{ env.IMAGE_NAME_WEB }}:${{ steps.determine.outputs.image_tag }}"
+          latest_image="${{ env.ALIYUN_REGISTRY_HOST }}/${{ env.ALIYUN_REGISTRY_NAMESPACE }}/${{ env.IMAGE_NAME_WEB }}:latest"
+          docker tag web "$image"
+          docker push "$image"
+          if [[ "${{ steps.determine.outputs.push_latest }}" == "true" ]]; then
+            docker tag web "$latest_image"
+            docker push "$latest_image"
+          fi
