@@ -10,7 +10,7 @@ on:
       - '*'
 
 env:
-  REGISTRY: yangfanz/
+  REGISTRY: yangfans/
   ALIYUN_REGISTRY_HOST: registry.cn-hangzhou.aliyuncs.com/yangfanz/
   ALIYUN_REGISTRY_NAMESPACE: kk-mock
   IMAGE_NAME_SERVER: server
