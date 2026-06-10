@@ -10,8 +10,7 @@ on:
       - '*'
 
 env:
-  REGISTRY: yangfans/
-  ALIYUN_REGISTRY_HOST: registry.cn-hangzhou.aliyuncs.com/yangfanz/
+  ALIYUN_REGISTRY_HOST: registry.cn-hangzhou.aliyuncs.com
   ALIYUN_REGISTRY_NAMESPACE: kk-mock
   IMAGE_NAME_SERVER: server
   IMAGE_NAME_WEB: web
@@ -50,24 +49,9 @@ jobs:
           echo "image_tag=${image_tag}" >> "$GITHUB_OUTPUT"
           echo "push_latest=${push_latest}" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v4
-      - name: Login to Docker Container Registry
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.REGISTRY_USERNAME }}
-          password: ${{ secrets.REGISTRY_PASSWORD }}
-      - name: Build and push Docker image
+      - name: Build Docker image
         shell: bash
-        run: |
-          image="${{ env.REGISTRY }}${{ env.IMAGE_NAME_SERVER }}:${{ steps.determine.outputs.image_tag }}"
-          latest_image="${{ env.REGISTRY }}${{ env.IMAGE_NAME_SERVER }}:latest"
-          docker build -t server -f server/Dockerfile .
-          docker tag server "$image"
-          docker push "$image"
-          if [[ "${{ steps.determine.outputs.push_latest }}" == "true" ]]; then
-            docker tag server "$latest_image"
-            docker push "$latest_image"
-          fi
-
+        run: docker build -t server -f server/Dockerfile .
       - name: Login to Aliyun Container Registry
         uses: docker/login-action@v3
         with:
@@ -119,23 +103,9 @@ jobs:
           echo "image_tag=${image_tag}" >> "$GITHUB_OUTPUT"
           echo "push_latest=${push_latest}" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v4
-      - name: Login to Docker Container Registry
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.REGISTRY_USERNAME }}
-          password: ${{ secrets.REGISTRY_PASSWORD }}
-      - name: Build and push Docker image
+      - name: Build Docker image
         shell: bash
-        run: |
-          image="${{ env.REGISTRY }}${{ env.IMAGE_NAME_WEB }}:${{ steps.determine.outputs.image_tag }}"
-          latest_image="${{ env.REGISTRY }}${{ env.IMAGE_NAME_WEB }}:latest"
-          docker build -t web -f ./web/Dockerfile ./web
-          docker tag web "$image"
-          docker push "$image"
-          if [[ "${{ steps.determine.outputs.push_latest }}" == "true" ]]; then
-            docker tag web "$latest_image"
-            docker push "$latest_image"
-          fi
+        run: docker build -t web -f ./web/Dockerfile ./web
       - name: Login to Aliyun Container Registry
         uses: docker/login-action@v3
         with:
