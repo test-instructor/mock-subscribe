@@ -1,25 +1,21 @@
-# 如果需要用 cicd ，请设置环境变量：
-# variables:
-#     DOCKER_BUILDKIT: 1
+FROM node:20-slim AS build
 
-FROM node:20-slim AS base
-ENV PNPM_HOME="/pnpm"
-ENV PATH="$PNPM_HOME:$PATH"
-RUN corepack enable
-COPY . /app
+# Build-time toggles
+ARG NODE_MAX_OLD_SPACE=4096
+ARG VITE_LEGACY=false
+
+ENV NODE_OPTIONS="--max-old-space-size=${NODE_MAX_OLD_SPACE}"
+ENV VITE_LEGACY=${VITE_LEGACY}
+
 WORKDIR /app
-
-
-FROM base AS prod-deps
-RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --prod
-
-FROM base AS build
-COPY --from=prod-deps /app/node_modules /app/node_modules
-RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install && pnpm run build
+COPY package.json ./
+RUN corepack enable yarn && yarn install
+COPY . .
+RUN yarn build
 
 
 FROM nginx:alpine
 LABEL MAINTAINER="bypanghu@163.com"
-COPY --from=base  /app/.docker-compose/nginx/conf.d/my.conf /etc/nginx/conf.d/my.conf
-COPY --from=build  /app/dist /usr/share/nginx/html
+COPY --from=build /app/.docker-compose/nginx/conf.d/my.conf /etc/nginx/conf.d/my.conf
+COPY --from=build /app/dist /usr/share/nginx/html
 RUN ls -al /usr/share/nginx/html
