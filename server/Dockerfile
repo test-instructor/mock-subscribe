@@ -1,21 +1,18 @@
-FROM golang:alpine as builder
+FROM golang:alpine AS builder
 
 WORKDIR /go/src/mock-subscribe
 
-COPY . .
+COPY server/ ./
 ENV GO111MODULE=on
 
-RUN  go build -o ./server ./server
-
+RUN go build -o /tmp/server .
 
 FROM golang:alpine
 ENV TZ=Asia/Shanghai
 WORKDIR /mock-subscribe
 RUN apk add --no-cache tzdata bash
-COPY --from=builder /go/src/mock-subscribe/server .
+COPY --from=builder /tmp/server ./server
 COPY --from=builder /go/src/mock-subscribe/server/config.docker.yaml ./config.docker.yaml
 
 EXPOSE 8888
-ENTRYPOINT exec ./server -c config.docker.yaml
-
-CMD ["tail", "-f", "/dev/null"]
+ENTRYPOINT ["./server", "-c", "config.docker.yaml"]
