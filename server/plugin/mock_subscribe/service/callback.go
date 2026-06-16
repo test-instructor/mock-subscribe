@@ -19,6 +19,7 @@ func (s *callback) DoXMLCallback(url string, body string) (string, error) {
 	if strings.TrimSpace(url) == "" {
 		return "", nil
 	}
+	time.Sleep(60 * time.Second)
 	global.GVA_LOG.Info("DoXMLCallback", zap.String("url", url))
 	req, err := http.NewRequest(http.MethodPost, url, bytes.NewBufferString(body))
 	if err != nil {
