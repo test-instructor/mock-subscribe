@@ -141,8 +141,8 @@ func (a *wechat) ContractSign(c *gin.Context) {
 		_ = serviceInfo.Contract.SetExpireTime(contract.ID, merchant.SignDurationMinutes)
 	}
 
-	preEntrustwebID := contractID
-	miniprogramPath := strings.ReplaceAll(merchant.MiniprogramPath, "xxxxxxxxxx", preEntrustwebID)
+	preEntrustwebID := model.RandomMixed(27)
+	miniprogramPath := fmt.Sprintf("pages/index/index?sign_scene=app&domain_type=cn&pre_entrustweb_id=%s", preEntrustwebID)
 
 	resp := model.SignContractResponseV2{
 		ReturnCode:          model.ErrCodeSuccess,

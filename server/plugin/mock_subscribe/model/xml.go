@@ -2,6 +2,8 @@ package model
 
 import (
 	"bytes"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/xml"
 	"strings"
 )
@@ -300,40 +302,20 @@ type SignContractResponseV2 struct {
 	PreEntrustwebID     string `xml:"pre_entrustweb_id"`
 }
 
-// ToXMLBytes 将响应结构体序列化为严格按字段顺序的 XML 字符串，使用 CDATA 包裹值
+// ToXMLBytes 将响应结构体序列化为严格按字段顺序的 XML 字符串
 func (r SignContractResponseV2) ToXMLBytes() ([]byte, error) {
 	var b bytes.Buffer
 	b.WriteString(`<xml>`)
-	b.WriteString(`<return_code><![CDATA[`)
-	b.WriteString(escape(r.ReturnCode))
-	b.WriteString(`]]></return_code>`)
-	b.WriteString(`<return_msg><![CDATA[`)
-	b.WriteString(escape(r.ReturnMsg))
-	b.WriteString(`]]></return_msg>`)
-	b.WriteString(`<result_code><![CDATA[`)
-	b.WriteString(escape(r.ResultCode))
-	b.WriteString(`]]></result_code>`)
-	b.WriteString(`<appid><![CDATA[`)
-	b.WriteString(escape(r.AppID))
-	b.WriteString(`]]></appid>`)
-	b.WriteString(`<mch_id><![CDATA[`)
-	b.WriteString(escape(r.MchID))
-	b.WriteString(`]]></mch_id>`)
-	b.WriteString(`<miniprogram_username><![CDATA[`)
-	b.WriteString(escape(r.MiniprogramUsername))
-	b.WriteString(`]]></miniprogram_username>`)
-	b.WriteString(`<miniprogram_path><![CDATA[`)
-	b.WriteString(escape(r.MiniprogramPath))
-	b.WriteString(`]]></miniprogram_path>`)
-	b.WriteString(`<nonce_str><![CDATA[`)
-	b.WriteString(escape(r.NonceStr))
-	b.WriteString(`]]></nonce_str>`)
-	b.WriteString(`<sign><![CDATA[`)
-	b.WriteString(escape(r.Sign))
-	b.WriteString(`]]></sign>`)
-	b.WriteString(`<pre_entrustweb_id><![CDATA[`)
-	b.WriteString(escape(r.PreEntrustwebID))
-	b.WriteString(`]]></pre_entrustweb_id>`)
+	b.WriteString(cdataWrap("return_code", r.ReturnCode))
+	b.WriteString(cdataWrap("return_msg", r.ReturnMsg))
+	b.WriteString(cdataWrap("result_code", r.ResultCode))
+	b.WriteString(cdataWrap("appid", r.AppID))
+	b.WriteString(cdataWrap("mch_id", r.MchID))
+	b.WriteString(cdataWrap("miniprogram_username", r.MiniprogramUsername))
+	b.WriteString(cdataWrap("miniprogram_path", r.MiniprogramPath))
+	b.WriteString(cdataWrap("nonce_str", r.NonceStr))
+	b.WriteString(cdataWrap("sign", r.Sign))
+	b.WriteString(cdataWrap("pre_entrustweb_id", r.PreEntrustwebID))
 	b.WriteString(`</xml>`)
 	return b.Bytes(), nil
 }
@@ -346,6 +328,32 @@ func escape(s string) string {
 	s = strings.ReplaceAll(s, `"`, "&quot;")
 	s = strings.ReplaceAll(s, `'`, "&apos;")
 	return s
+}
+
+// cdataWrap 如果 value 非空则返回 CDATA 包裹的字符串，否则返回空标签
+func cdataWrap(tag, value string) string {
+	if value != "" {
+		return "<" + tag + "><![CDATA[" + escape(value) + "]]></" + tag + ">"
+	}
+	return "<" + tag + "/>"
+}
+
+// RandomHex 生成长度为 n 字节的随机十六进制字符串
+func RandomHex(n int) string {
+	b := make([]byte, n)
+	rand.Read(b)
+	return hex.EncodeToString(b)
+}
+
+// RandomMixed 生成长度为 n 的随机混合字母数字字符串（字母+数字）
+func RandomMixed(n int) string {
+	const charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+	b := make([]byte, n)
+	rand.Read(b)
+	for i := range b {
+		b[i] = charset[int(b[i])%len(charset)]
+	}
+	return string(b)
 }
 
 // ====================== 预扣费通知API(JSON) ======================
