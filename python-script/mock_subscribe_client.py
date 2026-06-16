@@ -166,13 +166,17 @@ def make_contract_query_request(config: dict, contract_id: str, out_contract_cod
     payload = {
         'appid': config['app_id'],
         'mch_id': config['mch_id'],
-        'contract_id': contract_id,
         'plan_id': config['plan_id'],
-        'contract_code': out_contract_code,
-        'sign_type': config['sign_type'],
-        'timestamp': str(int(time.time())),
-        'nonce': random_nonce(),
     }
+    cleaned_contract_id = str(contract_id or '').strip()
+    if cleaned_contract_id:
+        payload['contract_id'] = cleaned_contract_id
+    cleaned_out_contract_code = str(out_contract_code or '').strip()
+    if cleaned_out_contract_code:
+        payload['contract_code'] = cleaned_out_contract_code
+    payload['sign_type'] = config['sign_type']
+    payload['timestamp'] = str(int(time.time()))
+    payload['nonce'] = random_nonce()
     payload['sign'] = build_sign(payload, config['sign_key'])
     return payload
 
@@ -330,16 +334,16 @@ def wait_callback_flow(config: dict, out_contract_code: str, callback_kind: str 
 
 
 def query_contract_until_active_flow(config: dict, contract_id: str, out_contract_code: str) -> dict:
-    timeout_seconds = int(config.get('poll_timeout_seconds', 60))
+    timeout_seconds = int(config.get('poll_timeout_seconds', 60*10))
     deadline = time.time() + timeout_seconds
     interval = int(config.get('poll_interval_seconds', 2))
     latest = None
     attempt = 0
-    current_contract_id = contract_id
+    current_contract_id = str(contract_id or '').strip()
     log_status(
         'START',
         '开始主动查询签约关系',
-        contract_id=contract_id,
+        contract_id=current_contract_id,
         out_contract_code=out_contract_code,
         timeout_seconds=timeout_seconds,
         interval_seconds=interval,
@@ -349,7 +353,9 @@ def query_contract_until_active_flow(config: dict, contract_id: str, out_contrac
         log_status('WAITING', '轮询签约关系中', contract_id=current_contract_id, out_contract_code=out_contract_code, attempt=attempt)
         latest = query_flow(config, current_contract_id, out_contract_code)
         response = latest['response']
-        current_contract_id = latest.get('contract_id') or current_contract_id
+        responded_contract_id = str(latest.get('contract_id') or '').strip()
+        if responded_contract_id:
+            current_contract_id = responded_contract_id
         if is_xml_api_success(response):
             contract_status = latest.get('contract_status', '')
             if contract_status == ACTIVE_CONTRACT_STATUS:
@@ -718,29 +724,28 @@ def main() -> int:
     parser = argparse.ArgumentParser(description='WeChat mock subscribe client')
     parser.add_argument('--config', default='config.example.json', help='config json path')
     sub = parser.add_subparsers(dest='command', required=False)
-
     sign_cmd = sub.add_parser('sign', help='send contract sign request')
     sign_cmd.add_argument('--out-contract-code', default='')
     sign_cmd.add_argument('--openid', default='')
 
     wait_cmd = sub.add_parser('wait-callback', help='poll callback records')
-    wait_cmd.add_argument('--out-contract-code', required=True)
+    wait_cmd.add_argument('--out-contract-code', default='')
     wait_cmd.add_argument('--kind', choices=['contract', 'deduct'], default='contract', help='callback record type to poll')
 
     query_cmd = sub.add_parser('query', help='query contract status')
-    query_cmd.add_argument('--contract-id', required=True)
+    query_cmd.add_argument('--contract-id', default='')
     query_cmd.add_argument('--out-contract-code', required=True)
 
     terminate_cmd = sub.add_parser('terminate', help='send contract terminate request')
-    terminate_cmd.add_argument('--contract-id', required=True)
+    terminate_cmd.add_argument('--contract-id', default='')
     terminate_cmd.add_argument('--out-contract-code', required=True)
     terminate_cmd.add_argument('--contract-ending-type', default='MERCHANT_REQUEST')
     terminate_cmd.add_argument('--remark', default='')
 
     deduct_cmd = sub.add_parser('deduct', help='query contract until active, then apply deduct and query order')
-    deduct_cmd.add_argument('--contract-id', required=True)
+    deduct_cmd.add_argument('--contract-id', default='')
     deduct_cmd.add_argument('--out-contract-code', required=True)
-    deduct_cmd.add_argument('--total-amount', type=int, required=True)
+    deduct_cmd.add_argument('--total-amount', type=int, default=0)
     deduct_cmd.add_argument('--out-trade-no', default='')
 
     order_cmd = sub.add_parser('query-order', help='query deduct order')
@@ -749,31 +754,44 @@ def main() -> int:
     order_cmd.add_argument('--wait-until-terminal', action='store_true', help='poll order status until terminal state')
 
     e2e_cmd = sub.add_parser('e2e', help='run sign -> query-contract-until-active -> deduct -> query-order')
-    e2e_cmd.add_argument('--total-amount', type=int, default=0)
+    e2e_cmd.add_argument('--total-amount', type=int, default=None)
+
+    # 当没有显式指定子命令时，默认走 e2e。这里直接把 'e2e' 注入到 sys.argv，
+    # 让 argparse 真正激活 e2e 子解析器，否则 e2e 的字段（如 --total-amount）
+    # 不会被附加到 Namespace 上，访问会抛 AttributeError。
+    first_arg = sys.argv[1] if len(sys.argv) > 1 else None
+    if first_arg is None or (first_arg.startswith('-') and first_arg not in {'-h', '--help'}):
+        sys.argv.insert(1, 'e2e')
 
     args = parser.parse_args()
     config = load_config(args.config)
-    command = args.command or 'e2e'
+    command = args.command
     log_status('START', '脚本开始执行', command=command, config=args.config)
 
     if command == 'sign':
         result = sign_flow(config, args.out_contract_code or None, args.openid or None)
     elif command == 'wait-callback':
+        if not args.out_contract_code:
+            parser.error('wait-callback 需要 --out-contract-code')
         result = wait_callback_flow(config, args.out_contract_code, args.kind)
     elif command == 'query':
         result = query_flow(config, args.contract_id, args.out_contract_code)
     elif command == 'terminate':
         result = terminate_flow(config, args.contract_id, args.out_contract_code, args.contract_ending_type, args.remark)
     elif command == 'deduct':
+        if not args.total_amount:
+            parser.error('deduct 需要 --total-amount')
         result = deduct_after_query_flow(config, args.contract_id, args.out_contract_code, args.total_amount, args.out_trade_no or None)
     elif command == 'query-order':
         if args.wait_until_terminal:
             result = query_order_until_terminal_flow(config, args.out_trade_no, args.transaction_id)
         else:
             result = query_order_flow(config, args.out_trade_no, args.transaction_id)
+    elif command == 'e2e':
+        result = e2e_flow(config, args.total_amount)
     else:
-        total_amount = getattr(args, 'total_amount', 0) or None
-        result = e2e_flow(config, total_amount)
+        parser.print_help()
+        return 1
 
     log_status('SUCCESS', '脚本执行完成', command=command)
     print(json.dumps(result, ensure_ascii=False, indent=2))

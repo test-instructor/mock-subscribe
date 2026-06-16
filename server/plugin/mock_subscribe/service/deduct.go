@@ -181,6 +181,16 @@ func (s *deduct) GetContractByContractIDFromDB(contractID string) (model.Contrac
 	return c, err
 }
 
+func (s *deduct) GetContractByPlanAndCode(planID string, outContractCode string) (model.Contract, error) {
+	var c model.Contract
+	query := global.GVA_DB.Where("out_contract_id = ?", outContractCode)
+	if strings.TrimSpace(planID) != "" {
+		query = query.Where("plan_id = ?", planID)
+	}
+	err := query.First(&c).Error
+	return c, err
+}
+
 func (s *deduct) GetContractByID(id uint) (model.Contract, error) {
 	var c model.Contract
 	err := global.GVA_DB.Where("id = ?", id).First(&c).Error

@@ -172,7 +172,7 @@ func (s *contract) SetExpireTime(id uint, durationMinutes int) error {
 	})
 }
 
-func (s *contract) SetContractID(id uint, contractID string, signSerialNo string) error {
+func (s *contract) SetContractID(id uint, outContractID string, contractID string, signSerialNo string) error {
 	return global.GVA_DB.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Model(&model.Contract{}).Where("id = ?", id).Updates(map[string]any{
 			"contract_id":    contractID,
@@ -180,7 +180,8 @@ func (s *contract) SetContractID(id uint, contractID string, signSerialNo string
 		}).Error; err != nil {
 			return err
 		}
-		return tx.Model(&model.ContractStatusRecord{}).Where("contract_id = ?", id).Updates(map[string]any{
+		return tx.Model(&model.ContractStatusRecord{}).Where("out_contract_id = ?", outContractID).Updates(map[string]any{
+			"contract_id":    id,
 			"contract_no":    contractID,
 			"sign_serial_no": signSerialNo,
 		}).Error

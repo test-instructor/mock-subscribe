@@ -136,7 +136,7 @@ func (a *wechat) ContractSign(c *gin.Context) {
 	signSerialNo := fmt.Sprintf("MOCK-S-%d", time.Now().UnixNano())
 	if merchant.SignTargetStatus == model.ContractStatusActive {
 		LogServiceCall(c, "Contract", "SetContractID", zap.Any("id", contract.ID), zap.String("contract_id", contractID))
-		_ = serviceInfo.Contract.SetContractID(contract.ID, contractID, signSerialNo)
+		_ = serviceInfo.Contract.SetContractID(contract.ID, contractCode, contractID, signSerialNo)
 		LogServiceCall(c, "Contract", "SetExpireTime", zap.Any("id", contract.ID))
 		_ = serviceInfo.Contract.SetExpireTime(contract.ID, merchant.SignDurationMinutes)
 	}
@@ -220,11 +220,29 @@ func (a *wechat) QueryContract(c *gin.Context) {
 		return
 	}
 	contractCode := normalizeContractCode(req.ContractCode, req.OutContractCode)
+	planID := strings.TrimSpace(req.PlanID)
+	contractID := strings.TrimSpace(req.ContractID)
+	if contractID == "" && contractCode == "" {
+		LogError(c, "QueryContract:参数校验", nil, zap.String("reason", "contract_id 与 contract_code 至少传入一个"))
+		resp := model.QueryContractResponse{ReturnCode: model.ErrCodeFail, ReturnMsg: "参数错误", ResultCode: model.ErrCodeFail, ErrCode: model.ErrCodeInvalidParams, ErrCodeDes: "contract_id 与 contract_code 至少传入一个"}
+		xml, _ := serviceInfo.XMLCodec.Marshal(resp)
+		LogResponse(c, "QueryContract", string(xml), start)
+		c.Data(200, "application/xml; charset=utf-8", []byte(xml))
+		return
+	}
+	if contractID == "" && planID == "" {
+		LogError(c, "QueryContract:参数校验", nil, zap.String("reason", "通过 contract_code 查询时必须同时传入 plan_id"))
+		resp := model.QueryContractResponse{ReturnCode: model.ErrCodeFail, ReturnMsg: "参数错误", ResultCode: model.ErrCodeFail, ErrCode: model.ErrCodeInvalidParams, ErrCodeDes: "通过 contract_code 查询时必须同时传入 plan_id"}
+		xml, _ := serviceInfo.XMLCodec.Marshal(resp)
+		LogResponse(c, "QueryContract", string(xml), start)
+		c.Data(200, "application/xml; charset=utf-8", []byte(xml))
+		return
+	}
 	params := map[string]string{
 		"appid":         req.AppID,
 		"mch_id":        req.MchID,
-		"contract_id":   req.ContractID,
-		"plan_id":       req.PlanID,
+		"contract_id":   contractID,
+		"plan_id":       planID,
 		"contract_code": contractCode,
 		"sign_type":     req.SignType,
 		"timestamp":     req.TimeStamp,
@@ -242,16 +260,33 @@ func (a *wechat) QueryContract(c *gin.Context) {
 	}
 
 	var contract model.Contract
-	if strings.TrimSpace(req.ContractID) != "" {
-		LogServiceCall(c, "Deduct", "GetContractByContractIDFromDB", zap.String("contract_id", req.ContractID))
-		contract, err = serviceInfo.Deduct.GetContractByContractIDFromDB(req.ContractID)
-	}
-	if err != nil && strings.TrimSpace(contractCode) != "" {
-		LogServiceCall(c, "Deduct", "GetContractFromDB", zap.String("contract_code", contractCode))
-		contract, err = serviceInfo.Deduct.GetContractFromDB(contractCode)
+	lookupMode := "contract_id"
+	if contractID != "" {
+		LogServiceCall(c, "Deduct", "GetContractByContractIDFromDB", zap.String("contract_id", contractID))
+		contract, err = serviceInfo.Deduct.GetContractByContractIDFromDB(contractID)
+	} else {
+		lookupMode = "plan_id+contract_code"
+		LogServiceCall(c, "Deduct", "GetContractByPlanAndCode", zap.String("plan_id", planID), zap.String("contract_code", contractCode))
+		contract, err = serviceInfo.Deduct.GetContractByPlanAndCode(planID, contractCode)
 	}
 	if err != nil {
-		LogError(c, "QueryContract:获取签约", err)
+		LogError(c, "QueryContract:获取签约", err, zap.String("lookup_mode", lookupMode))
+		resp := model.QueryContractResponse{ReturnCode: model.ErrCodeFail, ReturnMsg: "签约不存在", ResultCode: model.ErrCodeFail, ErrCode: model.ErrCodeSignNotFound, ErrCodeDes: "未找到签约关系"}
+		xml, _ := serviceInfo.XMLCodec.Marshal(resp)
+		LogResponse(c, "QueryContract", string(xml), start)
+		c.Data(200, "application/xml; charset=utf-8", []byte(xml))
+		return
+	}
+	if contract.MerchantID != merchant.ID {
+		LogError(c, "QueryContract:签约商户不匹配", nil, zap.Any("contract_merchant_id", contract.MerchantID), zap.Any("request_merchant_id", merchant.ID))
+		resp := model.QueryContractResponse{ReturnCode: model.ErrCodeFail, ReturnMsg: "签约不存在", ResultCode: model.ErrCodeFail, ErrCode: model.ErrCodeSignNotFound, ErrCodeDes: "未找到签约关系"}
+		xml, _ := serviceInfo.XMLCodec.Marshal(resp)
+		LogResponse(c, "QueryContract", string(xml), start)
+		c.Data(200, "application/xml; charset=utf-8", []byte(xml))
+		return
+	}
+	if contractID == "" && planID != "" && strings.TrimSpace(contract.PlanID) != "" && contract.PlanID != planID {
+		LogError(c, "QueryContract:模板id不匹配", nil, zap.String("contract_plan_id", contract.PlanID), zap.String("request_plan_id", planID))
 		resp := model.QueryContractResponse{ReturnCode: model.ErrCodeFail, ReturnMsg: "签约不存在", ResultCode: model.ErrCodeFail, ErrCode: model.ErrCodeSignNotFound, ErrCodeDes: "未找到签约关系"}
 		xml, _ := serviceInfo.XMLCodec.Marshal(resp)
 		LogResponse(c, "QueryContract", string(xml), start)
