@@ -141,6 +141,9 @@ func (a *wechat) ContractSign(c *gin.Context) {
 		_ = serviceInfo.Contract.SetExpireTime(contract.ID, merchant.SignDurationMinutes)
 	}
 
+	preEntrustwebID := contractID
+	miniprogramPath := strings.ReplaceAll(merchant.MiniprogramPath, "xxxxxxxxxx", preEntrustwebID)
+
 	resp := model.SignContractResponseV2{
 		ReturnCode:          model.ErrCodeSuccess,
 		ReturnMsg:           "OK",
@@ -148,9 +151,9 @@ func (a *wechat) ContractSign(c *gin.Context) {
 		AppID:               req.AppID,
 		MchID:               merchant.MchID,
 		MiniprogramUsername: merchant.MiniprogramUsername,
-		MiniprogramPath:     merchant.MiniprogramPath,
+		MiniprogramPath:     miniprogramPath,
 		NonceStr:            req.Nonce,
-		PreEntrustwebID:     merchant.PreEntrustwebID,
+		PreEntrustwebID:     preEntrustwebID,
 	}
 	resp.Sign = serviceInfo.Signature.Sign(map[string]string{
 		"return_code":          model.ErrCodeSuccess,
@@ -158,9 +161,9 @@ func (a *wechat) ContractSign(c *gin.Context) {
 		"appid":                req.AppID,
 		"mch_id":               merchant.MchID,
 		"miniprogram_username": merchant.MiniprogramUsername,
-		"miniprogram_path":     merchant.MiniprogramPath,
+		"miniprogram_path":     miniprogramPath,
 		"nonce_str":            req.Nonce,
-		"pre_entrustweb_id":    merchant.PreEntrustwebID,
+		"pre_entrustweb_id":    preEntrustwebID,
 	}, merchant.SignKey)
 	xmlRespBytes, _ := resp.ToXMLBytes()
 	xmlResp := string(xmlRespBytes)
