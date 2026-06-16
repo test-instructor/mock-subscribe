@@ -8,7 +8,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/flipped-aurora/gin-vue-admin/server/global"
 	"github.com/flipped-aurora/gin-vue-admin/server/plugin/mock_subscribe/model"
+	"go.uber.org/zap"
 )
 
 type callback struct{}
@@ -17,6 +19,7 @@ func (s *callback) DoXMLCallback(url string, body string) (string, error) {
 	if strings.TrimSpace(url) == "" {
 		return "", nil
 	}
+	global.GVA_LOG.Info("DoXMLCallback", zap.String("url", url))
 	req, err := http.NewRequest(http.MethodPost, url, bytes.NewBufferString(body))
 	if err != nil {
 		return "", err
@@ -33,6 +36,7 @@ func (s *callback) DoXMLCallback(url string, body string) (string, error) {
 		return "", err
 	}
 	if resp.StatusCode >= 400 {
+		global.GVA_LOG.Error("DoXMLCallback", zap.String("url", url))
 		return string(respBody), fmt.Errorf("回调失败，状态码: %d", resp.StatusCode)
 	}
 	return string(respBody), nil
