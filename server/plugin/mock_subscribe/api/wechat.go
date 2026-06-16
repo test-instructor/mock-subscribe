@@ -169,21 +169,23 @@ func (a *wechat) ContractSign(c *gin.Context) {
 	xmlResp := string(xmlRespBytes)
 	LogServiceCall(c, "Deduct", "UpdateContractRecordResponse", zap.Any("id", record.ID))
 	_ = serviceInfo.Deduct.UpdateContractRecordResponse(record.ID, xmlResp, merchant.SignTargetStatus)
-	if merchant.SignCallbackEnabled {
-		if merchant.SignCallbackDelay > 0 {
-			time.Sleep(time.Duration(merchant.SignCallbackDelay) * time.Second)
+	go func() {
+		if merchant.SignCallbackEnabled {
+			if merchant.SignCallbackDelay > 0 {
+				time.Sleep(time.Duration(merchant.SignCallbackDelay) * time.Second)
+			}
+			contract.ContractID = contractID
+			callbackXML := serviceInfo.Callback.BuildContractCallbackXML(contract, merchant.MchID, merchant.SignTargetStatus, merchant.SignKey)
+			LogServiceCall(c, "Callback", "DoXMLCallback", zap.String("url", req.NotifyURL))
+			result, callbackErr := serviceInfo.Callback.DoXMLCallback(req.NotifyURL, callbackXML)
+			if callbackErr != nil {
+				LogError(c, "ContractSign:异步回调", callbackErr, zap.String("result", result))
+				result = callbackErr.Error() + "; " + result
+			}
+			LogServiceCall(c, "Deduct", "UpdateContractRecordStatus", zap.Any("id", record.ID), zap.String("status", merchant.SignTargetStatus))
+			_ = serviceInfo.Deduct.UpdateContractRecordStatus(record.ID, merchant.SignTargetStatus, "", result)
 		}
-		contract.ContractID = contractID
-		callbackXML := serviceInfo.Callback.BuildContractCallbackXML(contract, merchant.MchID, merchant.SignTargetStatus, merchant.SignKey)
-		LogServiceCall(c, "Callback", "DoXMLCallback", zap.String("url", req.NotifyURL))
-		result, callbackErr := serviceInfo.Callback.DoXMLCallback(req.NotifyURL, callbackXML)
-		if callbackErr != nil {
-			LogError(c, "ContractSign:异步回调", callbackErr, zap.String("result", result))
-			result = callbackErr.Error() + "; " + result
-		}
-		LogServiceCall(c, "Deduct", "UpdateContractRecordStatus", zap.Any("id", record.ID), zap.String("status", merchant.SignTargetStatus))
-		_ = serviceInfo.Deduct.UpdateContractRecordStatus(record.ID, merchant.SignTargetStatus, "", result)
-	}
+	}()
 	LogResponse(c, "ContractSign", string(xmlResp), start)
 	c.Data(200, "application/xml; charset=utf-8", []byte(xmlResp))
 }
@@ -421,22 +423,24 @@ func (a *wechat) TerminateContract(c *gin.Context) {
 	LogServiceCall(c, "Deduct", "UpdateContractRecordResponse", zap.Any("id", record.ID))
 	_ = serviceInfo.Deduct.UpdateContractRecordResponse(record.ID, xmlResp, terminateStatus)
 
-	if terminateCallbackEnabled {
-		if merchant.TerminateCallbackDelay > 0 {
-			time.Sleep(time.Duration(merchant.TerminateCallbackDelay) * time.Second)
+	go func() {
+		if terminateCallbackEnabled {
+			if merchant.TerminateCallbackDelay > 0 {
+				time.Sleep(time.Duration(merchant.TerminateCallbackDelay) * time.Second)
+			}
+			callbackXML := serviceInfo.Callback.BuildContractCallbackXML(contract, merchant.MchID, terminateStatus, merchant.SignKey)
+			LogServiceCall(c, "Callback", "DoXMLCallback", zap.String("url", contract.NotifyURL))
+			result, callbackErr := serviceInfo.Callback.DoXMLCallback(contract.NotifyURL, callbackXML)
+			if callbackErr != nil {
+				LogError(c, "TerminateContract:异步回调", callbackErr, zap.String("result", result))
+				result = callbackErr.Error() + "; " + result
+			}
+			LogServiceCall(c, "Deduct", "UpdateContractRecordStatus", zap.Any("id", record.ID))
+			_ = serviceInfo.Deduct.UpdateContractRecordStatus(record.ID, terminateStatus, "", result)
+			LogServiceCall(c, "Deduct", "SetContractRecordCallbackResult", zap.Any("id", record.ID))
+			_ = serviceInfo.Deduct.SetContractRecordCallbackResult(record.ID, result, time.Now().Unix())
 		}
-		callbackXML := serviceInfo.Callback.BuildContractCallbackXML(contract, merchant.MchID, terminateStatus, merchant.SignKey)
-		LogServiceCall(c, "Callback", "DoXMLCallback", zap.String("url", contract.NotifyURL))
-		result, callbackErr := serviceInfo.Callback.DoXMLCallback(contract.NotifyURL, callbackXML)
-		if callbackErr != nil {
-			LogError(c, "TerminateContract:异步回调", callbackErr, zap.String("result", result))
-			result = callbackErr.Error() + "; " + result
-		}
-		LogServiceCall(c, "Deduct", "UpdateContractRecordStatus", zap.Any("id", record.ID))
-		_ = serviceInfo.Deduct.UpdateContractRecordStatus(record.ID, terminateStatus, "", result)
-		LogServiceCall(c, "Deduct", "SetContractRecordCallbackResult", zap.Any("id", record.ID))
-		_ = serviceInfo.Deduct.SetContractRecordCallbackResult(record.ID, result, time.Now().Unix())
-	}
+	}()
 	LogResponse(c, "TerminateContract", string(xmlResp), start)
 	c.Data(200, "application/xml; charset=utf-8", []byte(xmlResp))
 }
@@ -691,20 +695,22 @@ func (a *wechat) ApplyDeduct(c *gin.Context) {
 	LogServiceCall(c, "Deduct", "UpdateDeductRecordResponse", zap.Any("id", record.ID))
 	_ = serviceInfo.Deduct.UpdateDeductRecordResponse(record.ID, xmlResp, finalStatus)
 
-	if merchant.DeductCallbackEnabled {
-		if merchant.DeductCallbackDelay > 0 {
-			time.Sleep(time.Duration(merchant.DeductCallbackDelay) * time.Second)
+	go func() {
+		if merchant.DeductCallbackEnabled {
+			if merchant.DeductCallbackDelay > 0 {
+				time.Sleep(time.Duration(merchant.DeductCallbackDelay) * time.Second)
+			}
+			callbackXML := serviceInfo.Callback.BuildDeductCallbackXML(merchant, contract, record, req.SignType)
+			LogServiceCall(c, "Callback", "DoXMLCallback", zap.String("url", callbackTarget))
+			result, callbackErr := serviceInfo.Callback.DoXMLCallback(callbackTarget, callbackXML)
+			if callbackErr != nil {
+				LogError(c, "ApplyDeduct:异步回调", callbackErr, zap.String("result", result))
+				result = callbackErr.Error() + "; " + result
+			}
+			LogServiceCall(c, "Deduct", "SetCallbackResult", zap.Any("id", record.ID))
+			_ = serviceInfo.Deduct.SetCallbackResult(record.ID, result, time.Now().Unix())
 		}
-		callbackXML := serviceInfo.Callback.BuildDeductCallbackXML(merchant, contract, record, req.SignType)
-		LogServiceCall(c, "Callback", "DoXMLCallback", zap.String("url", callbackTarget))
-		result, callbackErr := serviceInfo.Callback.DoXMLCallback(callbackTarget, callbackXML)
-		if callbackErr != nil {
-			LogError(c, "ApplyDeduct:异步回调", callbackErr, zap.String("result", result))
-			result = callbackErr.Error() + "; " + result
-		}
-		LogServiceCall(c, "Deduct", "SetCallbackResult", zap.Any("id", record.ID))
-		_ = serviceInfo.Deduct.SetCallbackResult(record.ID, result, time.Now().Unix())
-	}
+	}()
 	LogResponse(c, "ApplyDeduct", string(xmlResp), start)
 }
 
