@@ -36,7 +36,7 @@ func (s *callback) DoXMLCallback(url string, body string) (string, error) {
 		return "", err
 	}
 	if resp.StatusCode >= 400 {
-		global.GVA_LOG.Error("DoXMLCallback", zap.String("url", url))
+		global.GVA_LOG.Error("DoXMLCallback", zap.String("url", url), zap.Any("resp.StatusCode", resp.StatusCode))
 		return string(respBody), fmt.Errorf("回调失败，状态码: %d", resp.StatusCode)
 	}
 	return string(respBody), nil
