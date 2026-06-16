@@ -1,6 +1,10 @@
 package model
 
-import "encoding/xml"
+import (
+	"bytes"
+	"encoding/xml"
+	"strings"
+)
 
 // ====================== APP纯签约请求/响应 ======================
 
@@ -279,6 +283,69 @@ type GenericACK struct {
 	XMLName    xml.Name `xml:"xml"`
 	ReturnCode string   `xml:"return_code"`
 	ReturnMsg  string   `xml:"return_msg"`
+}
+
+// SignContractResponseV2 APP纯签约响应(XML) - 严格按微信字段顺序输出
+// 用于 /papay/preentrustweb 成功响应，必须与微信官方字段顺序完全一致
+type SignContractResponseV2 struct {
+	ReturnCode          string `xml:"return_code"`
+	ReturnMsg           string `xml:"return_msg"`
+	ResultCode          string `xml:"result_code"`
+	AppID               string `xml:"appid"`
+	MchID               string `xml:"mch_id"`
+	MiniprogramUsername string `xml:"miniprogram_username"`
+	MiniprogramPath     string `xml:"miniprogram_path"`
+	NonceStr            string `xml:"nonce_str"`
+	Sign                string `xml:"sign"`
+	PreEntrustwebID     string `xml:"pre_entrustweb_id"`
+}
+
+// ToXMLBytes 将响应结构体序列化为严格按字段顺序的 XML 字符串，使用 CDATA 包裹值
+func (r SignContractResponseV2) ToXMLBytes() ([]byte, error) {
+	var b bytes.Buffer
+	b.WriteString(`<xml>`)
+	b.WriteString(`<return_code><![CDATA[`)
+	b.WriteString(escape(r.ReturnCode))
+	b.WriteString(`]]></return_code>`)
+	b.WriteString(`<return_msg><![CDATA[`)
+	b.WriteString(escape(r.ReturnMsg))
+	b.WriteString(`]]></return_msg>`)
+	b.WriteString(`<result_code><![CDATA[`)
+	b.WriteString(escape(r.ResultCode))
+	b.WriteString(`]]></result_code>`)
+	b.WriteString(`<appid><![CDATA[`)
+	b.WriteString(escape(r.AppID))
+	b.WriteString(`]]></appid>`)
+	b.WriteString(`<mch_id><![CDATA[`)
+	b.WriteString(escape(r.MchID))
+	b.WriteString(`]]></mch_id>`)
+	b.WriteString(`<miniprogram_username><![CDATA[`)
+	b.WriteString(escape(r.MiniprogramUsername))
+	b.WriteString(`]]></miniprogram_username>`)
+	b.WriteString(`<miniprogram_path><![CDATA[`)
+	b.WriteString(escape(r.MiniprogramPath))
+	b.WriteString(`]]></miniprogram_path>`)
+	b.WriteString(`<nonce_str><![CDATA[`)
+	b.WriteString(escape(r.NonceStr))
+	b.WriteString(`]]></nonce_str>`)
+	b.WriteString(`<sign><![CDATA[`)
+	b.WriteString(escape(r.Sign))
+	b.WriteString(`]]></sign>`)
+	b.WriteString(`<pre_entrustweb_id><![CDATA[`)
+	b.WriteString(escape(r.PreEntrustwebID))
+	b.WriteString(`]]></pre_entrustweb_id>`)
+	b.WriteString(`</xml>`)
+	return b.Bytes(), nil
+}
+
+// escape 对 XML 特殊字符进行转义，防止注入
+func escape(s string) string {
+	s = strings.ReplaceAll(s, "&", "&amp;")
+	s = strings.ReplaceAll(s, "<", "&lt;")
+	s = strings.ReplaceAll(s, ">", "&gt;")
+	s = strings.ReplaceAll(s, `"`, "&quot;")
+	s = strings.ReplaceAll(s, `'`, "&apos;")
+	return s
 }
 
 // ====================== 预扣费通知API(JSON) ======================

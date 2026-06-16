@@ -141,31 +141,29 @@ func (a *wechat) ContractSign(c *gin.Context) {
 		_ = serviceInfo.Contract.SetExpireTime(contract.ID, merchant.SignDurationMinutes)
 	}
 
-	resp := model.SignContractResponse{
-		ReturnCode:      model.ErrCodeSuccess,
-		ReturnMsg:       "OK",
-		ResultCode:      model.ErrCodeSuccess,
-		ContractID:      contractID,
-		ContractExtID:   signSerialNo,
-		OperationType:   "sign",
-		MchID:           merchant.MchID,
-		OutContractCode: contractCode,
-		SignType:        req.SignType,
-		TimeStamp:       strconv.FormatInt(time.Now().Unix(), 10),
-		Nonce:           req.Nonce,
+	resp := model.SignContractResponseV2{
+		ReturnCode:          model.ErrCodeSuccess,
+		ReturnMsg:           "OK",
+		ResultCode:          model.ErrCodeSuccess,
+		AppID:               req.AppID,
+		MchID:               merchant.MchID,
+		MiniprogramUsername: merchant.MiniprogramUsername,
+		MiniprogramPath:     merchant.MiniprogramPath,
+		NonceStr:            req.Nonce,
+		PreEntrustwebID:     merchant.PreEntrustwebID,
 	}
 	resp.Sign = serviceInfo.Signature.Sign(map[string]string{
-		"return_code":     model.ErrCodeSuccess,
-		"result_code":     model.ErrCodeSuccess,
-		"contract_id":     contractID,
-		"contract_ext_id": signSerialNo,
-		"mch_id":          merchant.MchID,
-		"contract_code":   contractCode,
-		"sign_type":       req.SignType,
-		"timestamp":       resp.TimeStamp,
-		"nonce":           resp.Nonce,
+		"return_code":          model.ErrCodeSuccess,
+		"result_code":          model.ErrCodeSuccess,
+		"appid":                req.AppID,
+		"mch_id":               merchant.MchID,
+		"miniprogram_username": merchant.MiniprogramUsername,
+		"miniprogram_path":     merchant.MiniprogramPath,
+		"nonce_str":            req.Nonce,
+		"pre_entrustweb_id":    merchant.PreEntrustwebID,
 	}, merchant.SignKey)
-	xmlResp, _ := serviceInfo.XMLCodec.Marshal(resp)
+	xmlRespBytes, _ := resp.ToXMLBytes()
+	xmlResp := string(xmlRespBytes)
 	LogServiceCall(c, "Deduct", "UpdateContractRecordResponse", zap.Any("id", record.ID))
 	_ = serviceInfo.Deduct.UpdateContractRecordResponse(record.ID, xmlResp, merchant.SignTargetStatus)
 	if merchant.SignCallbackEnabled {

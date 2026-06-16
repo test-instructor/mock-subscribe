@@ -9,14 +9,17 @@ type Merchant struct {
 	global.GVA_MODEL
 
 	// 商户标识配置
-	AppID            string `json:"appId" form:"appId" gorm:"column:app_id;comment:应用ID"`
-	MchID            string `json:"mchId" form:"mchId" gorm:"column:mch_id;comment:商户号"`
-	ContractMchID    string `json:"contractMchId" form:"contractMchId" gorm:"column:contract_mch_id;comment:签约商户号"`
-	ContractAppID    string `json:"contractAppId" form:"contractAppId" gorm:"column:contract_app_id;comment:签约AppID"`
-	DisplayName      string `json:"displayName" form:"displayName" gorm:"column:display_name;comment:用户账户展示名称"`
-	SignKey          string `json:"signKey" form:"signKey" gorm:"column:sign_key;comment:签名key"`
-	VerifySign       bool   `json:"verifySign" form:"verifySign" gorm:"column:verify_sign;default:true;comment:是否验签"`
-	ContractTemplate string `json:"contractTemplate" form:"contractTemplate" gorm:"column:contract_template;comment:签约模板"`
+	AppID               string `json:"appId" form:"appId" gorm:"column:app_id;comment:应用ID"`
+	MchID               string `json:"mchId" form:"mchId" gorm:"column:mch_id;comment:商户号"`
+	ContractMchID       string `json:"contractMchId" form:"contractMchId" gorm:"column:contract_mch_id;comment:签约商户号"`
+	ContractAppID       string `json:"contractAppId" form:"contractAppId" gorm:"column:contract_app_id;comment:签约AppID"`
+	DisplayName         string `json:"displayName" form:"displayName" gorm:"column:display_name;comment:用户账户展示名称"`
+	SignKey             string `json:"signKey" form:"signKey" gorm:"column:sign_key;comment:签名key"`
+	VerifySign          bool   `json:"verifySign" form:"verifySign" gorm:"column:verify_sign;default:true;comment:是否验签"`
+	ContractTemplate    string `json:"contractTemplate" form:"contractTemplate" gorm:"column:contract_template;comment:签约模板"`
+	MiniprogramUsername string `json:"miniprogramUsername" form:"miniprogramUsername" gorm:"column:miniprogram_username;comment:签约小程序用户名"`
+	MiniprogramPath     string `json:"miniprogramPath" form:"miniprogramPath" gorm:"column:miniprogram_path;comment:签约小程序路径"`
+	PreEntrustwebID     string `json:"preEntrustwebId" form:"preEntrustwebId" gorm:"column:pre_entrustweb_id;comment:预受理标识"`
 
 	// 签约回调配置
 	SignCallbackEnabled bool `json:"signCallbackEnabled" form:"signCallbackEnabled" gorm:"column:sign_callback_enabled;comment:签约回调开关"`
