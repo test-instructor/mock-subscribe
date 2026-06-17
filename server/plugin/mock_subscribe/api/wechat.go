@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/flipped-aurora/gin-vue-admin/server/global"
 	"github.com/flipped-aurora/gin-vue-admin/server/plugin/mock_subscribe/model"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -32,6 +33,8 @@ func normalizeOpenID(openID string, legacyOpenID string) string {
 func (a *wechat) ContractSign(c *gin.Context) {
 	start := time.Now()
 	body, err := io.ReadAll(c.Request.Body)
+	global.GVA_LOG.Info("=========================开始签约=========================", zap.Any("开始时间", time.DateTime))
+	defer global.GVA_LOG.Info("=========================签约返回=========================", zap.Any("返回时间", time.DateTime))
 	if err != nil {
 		LogError(c, "ContractSign:读取请求体", err)
 		c.String(200, "<xml><return_code>FAIL</return_code><return_msg>读取请求失败</return_msg></xml>")
@@ -126,21 +129,8 @@ func (a *wechat) ContractSign(c *gin.Context) {
 	LogServiceCall(c, "Deduct", "CreateContractRecord", zap.Any("record", record))
 	_ = serviceInfo.Deduct.CreateContractRecord(&record)
 
-	if merchant.SignStatusDelay > 0 {
-		time.Sleep(time.Duration(merchant.SignStatusDelay) * time.Second)
-	}
-	LogServiceCall(c, "Contract", "UpdateContractStatus", zap.Any("id", contract.ID), zap.String("status", merchant.SignTargetStatus))
-	_ = serviceInfo.Contract.UpdateContractStatus(contract.ID, merchant.SignTargetStatus, "")
-
 	contractID := fmt.Sprintf("MOCK-C-%d", contract.ID)
 	signSerialNo := fmt.Sprintf("MOCK-S-%d", time.Now().UnixNano())
-	if merchant.SignTargetStatus == model.ContractStatusActive {
-		LogServiceCall(c, "Contract", "SetContractID", zap.Any("id", contract.ID), zap.String("contract_id", contractID))
-		_ = serviceInfo.Contract.SetContractID(contract.ID, contractCode, contractID, signSerialNo)
-		LogServiceCall(c, "Contract", "SetExpireTime", zap.Any("id", contract.ID))
-		_ = serviceInfo.Contract.SetExpireTime(contract.ID, merchant.SignDurationMinutes)
-	}
-
 	preEntrustwebID := model.RandomMixed(27)
 	miniprogramPath := fmt.Sprintf("pages/index/index?sign_scene=app&domain_type=cn&pre_entrustweb_id=%s", preEntrustwebID)
 
@@ -170,6 +160,21 @@ func (a *wechat) ContractSign(c *gin.Context) {
 	LogServiceCall(c, "Deduct", "UpdateContractRecordResponse", zap.Any("id", record.ID))
 	_ = serviceInfo.Deduct.UpdateContractRecordResponse(record.ID, xmlResp, merchant.SignTargetStatus)
 	go func() {
+		global.GVA_LOG.Info("=========================协程回调=========================", zap.Any("进入协程时间", time.DateTime))
+		defer global.GVA_LOG.Info("=========================协程回调=========================", zap.Any("协程结束时间", time.DateTime))
+		if merchant.SignStatusDelay > 0 {
+			time.Sleep(time.Duration(merchant.SignStatusDelay) * time.Second)
+		}
+		LogServiceCall(c, "Contract", "UpdateContractStatus", zap.Any("id", contract.ID), zap.String("status", merchant.SignTargetStatus))
+		_ = serviceInfo.Contract.UpdateContractStatus(contract.ID, merchant.SignTargetStatus, "")
+
+		if merchant.SignTargetStatus == model.ContractStatusActive {
+			LogServiceCall(c, "Contract", "SetContractID", zap.Any("id", contract.ID), zap.String("contract_id", contractID))
+			_ = serviceInfo.Contract.SetContractID(contract.ID, contractCode, contractID, signSerialNo)
+			LogServiceCall(c, "Contract", "SetExpireTime", zap.Any("id", contract.ID))
+			_ = serviceInfo.Contract.SetExpireTime(contract.ID, merchant.SignDurationMinutes)
+		}
+
 		if merchant.SignCallbackEnabled {
 			if merchant.SignCallbackDelay > 0 {
 				time.Sleep(time.Duration(merchant.SignCallbackDelay) * time.Second)

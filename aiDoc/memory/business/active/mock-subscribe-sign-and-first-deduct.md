@@ -11,3 +11,7 @@
 - 细节：Python 脚本需要新增独立的签约查询、申请扣款、订单查询命令，并在扣款成功或失败、订单成功或失败时打印明确日志。
 - 需求：`/papay/preentrustweb` 签约回调 XML 的最外层标签需要与微信文档保持一致，使用 `xml` 而不是 `ContractResultNotify`。
 - 细节：签约结果通知示例要求回调报文根节点为 `<xml>...</xml>`，避免因根标签错误导致下游解析失败。
+- 需求：`/papay/preentrustweb` 接口需要立即返回，不能被“签约状态延时”阻塞。
+- 细节：接口调用后直接构造响应 XML 并返回 HTTP，状态写入、合同号/有效期设置、回调发送等所有延后动作统一放进 `go func()` 协程中执行。
+- 细节：协程内执行顺序为：`time.Sleep(SignStatusDelay)` → `UpdateContractStatus(SignTargetStatus)` → 若是 `ACTIVE` 则 `SetContractID`/`SetExpireTime` → 必要时再 `time.Sleep(SignCallbackDelay)` 后发送签约回调。
+- 细节：响应中的 `contract_id`、`sign_serial_no`、`pre_entrustweb_id` 等需要提前在主流程生成并参与签名，保证立即返回的响应和协程内写库使用的值一致。
