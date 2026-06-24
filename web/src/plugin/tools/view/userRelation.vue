@@ -14,7 +14,16 @@
           </el-select>
         </el-form-item>
         <el-form-item label="用户ID" prop="userId">
-          <el-input v-model.number="searchInfo.userId" placeholder="用户ID" clearable />
+          <el-input v-model.number="searchInfo.userId" placeholder="单个用户ID" clearable style="width:160px" />
+        </el-form-item>
+        <el-form-item label="批量ID" prop="userIdsText">
+          <el-input
+            v-model="searchInfo.userIdsText"
+            type="textarea"
+            :rows="2"
+            placeholder="批量查询(每行一个用户ID)"
+            style="width:280px"
+          />
         </el-form-item>
         <el-form-item>
           <el-button type="primary" icon="search" @click="onSubmit">查询</el-button>
@@ -115,7 +124,8 @@ const rule = {
 
 const searchInfo = ref({
   environmentKey: '',
-  userId: ''
+  userId: '',
+  userIdsText: ''
 })
 
 const environmentOptions = ref([])
@@ -125,12 +135,27 @@ const total = ref(0)
 const pageSize = ref(10)
 const tableData = ref([])
 
+const parseBatchIds = (text) => {
+  if (!text) return []
+  const out = []
+  const lines = String(text).split(/[\n,; \t]+/)
+  for (const line of lines) {
+    const v = line.trim()
+    if (!v) continue
+    const n = Number(v)
+    if (Number.isFinite(n) && n > 0) out.push(n)
+  }
+  return out
+}
+
 const onReset = () => {
-  searchInfo.value = { environmentKey: '', userId: '' }
+  searchInfo.value = { environmentKey: '', userId: '', userIdsText: '' }
+  page.value = 1
   getTableData()
 }
 
 const onSubmit = () => {
+  page.value = 1
   getTableData()
 }
 
@@ -148,11 +173,17 @@ const handleCurrentChange = (val) => {
 }
 
 const getTableData = async () => {
-  const res = await getUserRelationList({
+  const userIds = parseBatchIds(searchInfo.value.userIdsText)
+  const params = {
     page: page.value,
     pageSize: pageSize.value,
-    ...searchInfo.value
-  })
+    environmentKey: searchInfo.value.environmentKey || undefined,
+    userId: searchInfo.value.userId ? Number(searchInfo.value.userId) : undefined
+  }
+  if (userIds.length > 0) {
+    params['userIds[]'] = userIds
+  }
+  const res = await getUserRelationList(params)
   if (res.code === 0) {
     tableData.value = res.data.list
     total.value = res.data.total

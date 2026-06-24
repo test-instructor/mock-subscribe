@@ -96,5 +96,9 @@
   "/src/plugin/mock_subscribe/view/contract.vue": "MockSubscribeContract",
   "/src/plugin/mock_subscribe/view/deduct.vue": "MockSubscribeDeduct",
   "/src/plugin/mock_subscribe/view/deductCallback.vue": "MockSubscribeDeductCallback",
-  "/src/plugin/mock_subscribe/view/merchant.vue": "MockSubscribeMerchant"
+  "/src/plugin/mock_subscribe/view/merchant.vue": "MockSubscribeMerchant",
+  "/src/plugin/tools/view/environment.vue": "ToolsEnvironment",
+  "/src/plugin/tools/view/fanFollow.vue": "ToolsFanFollow",
+  "/src/plugin/tools/view/sendChat.vue": "ToolsSendChat",
+  "/src/plugin/tools/view/userRelation.vue": "ToolsUserRelation"
 }

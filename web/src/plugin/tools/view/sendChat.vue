@@ -84,7 +84,7 @@ import { createSendChatTask, getSendChatTaskList, stopSendChatTask } from '@/plu
 import { getEnvironmentList } from '@/plugin/tools/api/environment'
 import { formatDate } from '@/utils/format'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 
 defineOptions({ name: 'ToolsSendChat' })
 
@@ -98,19 +98,22 @@ const createForm = ref({
 
 const environmentOptions = ref([])
 const creating = ref(false)
+const stoppingIds = ref(new Set())
 
 const page = ref(1)
 const total = ref(0)
 const pageSize = ref(10)
 const tableData = ref([])
 
+let pollTimer = null
+
 const statusType = (status) => {
-  const map = { running: 'warning', completed: 'success', stopped: 'info' }
+  const map = { running: 'warning', completed: 'success', stopped: 'info', failed: 'danger' }
   return map[status] || ''
 }
 
 const statusLabel = (status) => {
-  const map = { running: '运行中', completed: '已完成', stopped: '已停止' }
+  const map = { running: '运行中', completed: '已完成', stopped: '已停止', failed: '失败' }
   return map[status] || status
 }
 
@@ -142,9 +145,30 @@ const loadEnvironments = async () => {
   }
 }
 
+const startPolling = () => {
+  stopPolling()
+  pollTimer = setInterval(() => {
+    if (tableData.value.some(r => r.status === 'running')) {
+      getTableData()
+    }
+  }, 3000)
+}
+
+const stopPolling = () => {
+  if (pollTimer) {
+    clearInterval(pollTimer)
+    pollTimer = null
+  }
+}
+
 onMounted(() => {
   getTableData()
   loadEnvironments()
+  startPolling()
+})
+
+onUnmounted(() => {
+  stopPolling()
 })
 
 const handleCreate = async () => {
@@ -161,6 +185,7 @@ const handleCreate = async () => {
     const res = await createSendChatTask(createForm.value)
     if (res.code === 0) {
       ElMessage.success('任务已创建')
+      page.value = 1
       getTableData()
     } else {
       ElMessage.error(res.msg || '创建失败')
@@ -173,12 +198,17 @@ const handleCreate = async () => {
 const handleStop = async (row) => {
   ElMessageBox.confirm('确定要停止该任务吗?', '提示', { confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning' })
     .then(async () => {
-      const res = await stopSendChatTask({ ID: row.ID })
-      if (res.code === 0) {
-        ElMessage.success('任务已停止')
-        getTableData()
-      } else {
-        ElMessage.error(res.msg || '停止失败')
+      stoppingIds.value.add(row.ID)
+      try {
+        const res = await stopSendChatTask({ ID: row.ID })
+        if (res.code === 0) {
+          ElMessage.success('任务已停止')
+          getTableData()
+        } else {
+          ElMessage.error(res.msg || '停止失败')
+        }
+      } finally {
+        stoppingIds.value.delete(row.ID)
       }
     })
 }

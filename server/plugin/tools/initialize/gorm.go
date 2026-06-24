@@ -15,6 +15,7 @@ func Gorm(ctx context.Context) {
 		new(toolsModel.Environment),
 		new(toolsModel.UserRelation),
 		new(toolsModel.SendChatTask),
+		new(toolsModel.FanFollowRecord),
 	)
 	if err != nil {
 		err = errors.Wrap(err, "注册tools表失败")

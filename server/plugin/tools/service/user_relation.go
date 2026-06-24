@@ -67,6 +67,9 @@ func (s *userRelation) GetUserRelationList(info toolsReq.UserRelationSearch) ([]
 	if info.UserID != 0 {
 		db = db.Where("user_id = ?", info.UserID)
 	}
+	if len(info.UserIds) > 0 {
+		db = db.Where("user_id IN ?", info.UserIds)
+	}
 	if err := db.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
@@ -80,12 +83,13 @@ func (s *userRelation) GetUserIdsByEnvironmentKey(envKey string, limit int) ([]u
 	var results []struct {
 		UserID uint64 `gorm:"column:user_id"`
 	}
-	err := global.GVA_DB.Model(&toolsModel.UserRelation{}).
+	q := global.GVA_DB.Model(&toolsModel.UserRelation{}).
 		Where("environment_key = ?", envKey).
-		Order("id asc").
-		Limit(limit).
-		Find(&results).Error
-	if err != nil {
+		Order("id asc")
+	if limit > 0 {
+		q = q.Limit(limit)
+	}
+	if err := q.Find(&results).Error; err != nil {
 		return nil, err
 	}
 	ids := make([]uint64, len(results))

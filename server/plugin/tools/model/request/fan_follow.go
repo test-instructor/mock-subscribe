@@ -11,4 +11,6 @@ type FanFollowCreate struct {
 
 type FanFollowSearch struct {
 	request.PageInfo
+	EnvironmentKey string `form:"environmentKey"`
+	Operation      string `form:"operation"`
 }

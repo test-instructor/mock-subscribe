@@ -14,12 +14,15 @@ func (a *fanFollow) CreateFanFollow(c *gin.Context) {
 		response.FailWithMessage(err.Error(), c)
 		return
 	}
-	count, err := serviceInfo.FanFollow.CreateFanFollow(req)
+	recordID, count, err := serviceInfo.FanFollow.CreateFanFollow(req)
 	if err != nil {
 		response.FailWithMessage("执行粉丝/关注/好友操作失败: "+err.Error(), c)
 		return
 	}
-	response.OkWithDetailed(map[string]int{"successCount": count}, "操作完成", c)
+	response.OkWithDetailed(map[string]interface{}{
+		"recordId":     recordID,
+		"successCount": count,
+	}, "操作完成", c)
 }
 
 func (a *fanFollow) GetFanFollowList(c *gin.Context) {
@@ -28,9 +31,14 @@ func (a *fanFollow) GetFanFollowList(c *gin.Context) {
 		response.FailWithMessage(err.Error(), c)
 		return
 	}
+	list, total, err := serviceInfo.FanFollow.GetFanFollowList(pageInfo)
+	if err != nil {
+		response.FailWithMessage("获取执行记录失败: "+err.Error(), c)
+		return
+	}
 	response.OkWithDetailed(response.PageResult{
-		List:     []interface{}{},
-		Total:    0,
+		List:     list,
+		Total:    total,
 		Page:     pageInfo.Page,
 		PageSize: pageInfo.PageSize,
 	}, "获取成功", c)

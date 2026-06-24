@@ -2,6 +2,7 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -20,6 +21,8 @@ import (
 )
 
 type sendChat struct{}
+
+var taskCancels sync.Map
 
 var chineseChars = []rune{
 	'我', '你', '他', '她', '的', '是', '在', '有', '和', '了',
@@ -80,6 +83,25 @@ func (s *sendChat) CreateSendChatTask(req toolsReq.SendChatCreate) (uint, error)
 		req.MsgInterval = 0
 	}
 
+	var env toolsModel.Environment
+	if err := global.GVA_DB.Where("key = ?", req.EnvironmentKey).First(&env).Error; err != nil {
+		return 0, errors.New("环境不存在")
+	}
+
+	var totalUser int64
+	global.GVA_DB.Model(&toolsModel.UserRelation{}).Where("environment_key = ?", req.EnvironmentKey).Count(&totalUser)
+	if totalUser == 0 {
+		return 0, errors.New("该环境未维护用户数据")
+	}
+
+	var running int64
+	global.GVA_DB.Model(&toolsModel.SendChatTask{}).
+		Where("environment_key = ? AND status = ?", req.EnvironmentKey, "running").
+		Count(&running)
+	if running > 0 {
+		return 0, errors.New("该环境已有运行中的任务")
+	}
+
 	task := toolsModel.SendChatTask{
 		RoomID:             req.RoomID,
 		EnvironmentKey:     req.EnvironmentKey,
@@ -93,31 +115,31 @@ func (s *sendChat) CreateSendChatTask(req toolsReq.SendChatCreate) (uint, error)
 		return 0, err
 	}
 
-	go s.runSendChatTask(task.ID, req)
+	ctx, cancel := context.WithCancel(context.Background())
+	taskCancels.Store(task.ID, cancel)
+	go s.runSendChatTask(ctx, task.ID, req)
 
 	return task.ID, nil
 }
 
-func (s *sendChat) runSendChatTask(taskID uint, req toolsReq.SendChatCreate) {
-	defer func() {
-		global.GVA_DB.Model(&toolsModel.SendChatTask{}).Where("id = ?", taskID).
-			Update("status", "completed")
-	}()
-
+func (s *sendChat) runSendChatTask(ctx context.Context, taskID uint, req toolsReq.SendChatCreate) {
 	var env toolsModel.Environment
 	if err := global.GVA_DB.Where("key = ?", req.EnvironmentKey).First(&env).Error; err != nil {
 		global.GVA_LOG.Error("SendChat task failed: env not found", zap.String("key", req.EnvironmentKey))
+		s.markStatus(taskID, "failed")
 		return
 	}
 
-	var userIDs []uint64
-	if err := global.GVA_DB.Model(&toolsModel.UserRelation{}).
-		Where("environment_key = ?", req.EnvironmentKey).
-		Order("id asc").
-		Limit(req.AccountCount).
-		Pluck("user_id", &userIDs).Error; err != nil || len(userIDs) == 0 {
+	allUserIDs, err := (&userRelation{}).GetUserIdsByEnvironmentKey(req.EnvironmentKey, 0)
+	if err != nil || len(allUserIDs) == 0 {
 		global.GVA_LOG.Error("SendChat task failed: no user IDs found", zap.String("key", req.EnvironmentKey))
+		s.markStatus(taskID, "failed")
 		return
+	}
+	rand.Shuffle(len(allUserIDs), func(i, j int) { allUserIDs[i], allUserIDs[j] = allUserIDs[j], allUserIDs[i] })
+	userIDs := allUserIDs
+	if len(userIDs) > req.AccountCount {
+		userIDs = userIDs[:req.AccountCount]
 	}
 
 	roomidInt, _ := strconv.ParseInt(req.RoomID, 10, 64)
@@ -144,11 +166,18 @@ func (s *sendChat) runSendChatTask(taskID uint, req toolsReq.SendChatCreate) {
 	limiter := make(chan struct{}, 10)
 
 	for _, uid := range userIDs {
+		if ctx.Err() != nil {
+			break
+		}
 		wg.Add(1)
+		limiter <- struct{}{}
 		go func(userID uint64) {
 			defer wg.Done()
-			limiter <- struct{}{}
 			defer func() { <-limiter }()
+
+			if ctx.Err() != nil {
+				return
+			}
 
 			uidStr := strconv.FormatUint(userID, 10)
 			client := &http.Client{Timeout: 30 * time.Second}
@@ -194,13 +223,20 @@ func (s *sendChat) runSendChatTask(taskID uint, req toolsReq.SendChatCreate) {
 				"device_type":    20,
 				"is_long_socket": true,
 			}
-			doReq("/RoomExtObj/EnterRoom2", enterBody)
+			if err := doReq("/RoomExtObj/EnterRoom2", enterBody); err != nil {
+				global.GVA_LOG.Warn("SendChat enter room failed",
+					zap.Uint64("userId", userID), zap.Error(err))
+				return
+			}
 
 			sendBody := map[string]interface{}{
 				"is_private": false,
 				"options":    json.RawMessage(`{"type":0,"emojiId":0,"toId":0,"giftNum":0,"gameGlory":"","giftId":0,"createAt":0,"goldVoice":0}`),
 			}
 			for i := 0; i < req.MsgCountPerAccount; i++ {
+				if ctx.Err() != nil {
+					return
+				}
 				sendBody["content"] = randomChineseMsg()
 				if err := doReq("/RoomExtObj/SendChat", sendBody); err == nil {
 					mu.Lock()
@@ -208,26 +244,42 @@ func (s *sendChat) runSendChatTask(taskID uint, req toolsReq.SendChatCreate) {
 					global.GVA_DB.Model(&toolsModel.SendChatTask{}).Where("id = ?", taskID).Update("success_count", successCount)
 					mu.Unlock()
 				}
-				time.Sleep(interval)
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(interval):
+				}
 			}
 		}(uid)
 	}
 
 	wg.Wait()
 
-	global.GVA_LOG.Info("SendChat task completed",
+	if _, ok := taskCancels.LoadAndDelete(taskID); ok {
+		s.markStatus(taskID, "completed")
+	}
+	global.GVA_LOG.Info("SendChat task finished",
 		zap.Uint("taskId", taskID),
 		zap.Int("successCount", successCount))
+}
+
+func (s *sendChat) markStatus(taskID uint, status string) {
+	global.GVA_DB.Model(&toolsModel.SendChatTask{}).
+		Where("id = ? AND status = ?", taskID, "running").
+		Update("status", status)
 }
 
 func (s *sendChat) StopSendChatTask(id uint) error {
 	if id == 0 {
 		return errors.New("任务ID不能为空")
 	}
-	result := global.GVA_DB.Model(&toolsModel.SendChatTask{}).Where("id = ? AND status = ?", id, "running").
+	res := global.GVA_DB.Model(&toolsModel.SendChatTask{}).Where("id = ? AND status = ?", id, "running").
 		Update("status", "stopped")
-	if result.RowsAffected == 0 {
+	if res.RowsAffected == 0 {
 		return errors.New("任务不存在或已停止")
+	}
+	if v, ok := taskCancels.LoadAndDelete(id); ok {
+		v.(context.CancelFunc)()
 	}
 	return nil
 }

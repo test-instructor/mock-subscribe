@@ -20,7 +20,7 @@ func (s *environment) CreateEnvironment(info *toolsModel.Environment) error {
 		return errors.New("Key不能为空")
 	}
 	var count int64
-	global.GVA_DB.Model(&toolsModel.Environment{}).Where("key = ?", info.Key).Count(&count)
+	global.GVA_DB.Model(&toolsModel.Environment{}).Where("key = ? AND id <> ?", info.Key, info.ID).Count(&count)
 	if count > 0 {
 		return errors.New("Key已存在")
 	}
@@ -34,7 +34,24 @@ func (s *environment) UpdateEnvironment(info *toolsModel.Environment) error {
 	if strings.TrimSpace(info.Name) == "" {
 		return errors.New("名称不能为空")
 	}
-	return global.GVA_DB.Save(info).Error
+	if strings.TrimSpace(info.Key) == "" {
+		return errors.New("Key不能为空")
+	}
+	var current toolsModel.Environment
+	if err := global.GVA_DB.Where("id = ?", info.ID).First(&current).Error; err != nil {
+		return errors.New("环境配置不存在")
+	}
+	if current.Key != info.Key {
+		return errors.New("Key不允许修改")
+	}
+	return global.GVA_DB.Model(&toolsModel.Environment{}).
+		Where("id = ?", info.ID).
+		Updates(map[string]interface{}{
+			"name":   info.Name,
+			"domain": info.Domain,
+			"port":   info.Port,
+			"remark": info.Remark,
+		}).Error
 }
 
 func (s *environment) DeleteEnvironment(id uint) error {
